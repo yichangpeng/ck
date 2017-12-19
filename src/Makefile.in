@@ -16,7 +16,8 @@ OBJECTS=ck_barrier_centralized.o	\
 	ck_hp.o				\
 	ck_hs.o				\
 	ck_rhs.o			\
-	ck_array.o
+	ck_array.o 			\
+	ck_shm_allocator.o
 
 all: $(ALL_LIBS)
 
@@ -58,6 +59,9 @@ ck_barrier_tournament.o: $(SDIR)/ck_barrier_tournament.c
 
 ck_barrier_mcs.o: $(SDIR)/ck_barrier_mcs.c
 	$(CC) $(CFLAGS) -c -o $(TARGET_DIR)/ck_barrier_mcs.o $(SDIR)/ck_barrier_mcs.c
+
+ck_shm_allocator.o: $(SDIR)/ck_shm_allocator.c
+	$(CC) $(CFLAGS) -c -o $(TARGET_DIR)/ck_shm_allocator.o $(SDIR)/ck_shm_allocator.c
 
 clean:
 	rm -rf $(TARGET_DIR)/*.dSYM $(TARGET_DIR)/*~ $(TARGET_DIR)/*.o \

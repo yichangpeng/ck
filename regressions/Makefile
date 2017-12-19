@@ -21,7 +21,7 @@ DIR=array	\
     spinlock	\
     stack	\
     swlock	\
-    tflock
+    tflock 
 
 .PHONY: all clean check
 
@@ -69,6 +69,7 @@ all:
 	$(MAKE) -C ./ck_pflock/benchmark all
 	$(MAKE) -C ./ck_hp/validate all
 	$(MAKE) -C ./ck_hp/benchmark all
+	$(MAKE) -C ./ck_shm_allocator/validate all
 
 clean:
 	$(MAKE) -C ./ck_array/validate clean
