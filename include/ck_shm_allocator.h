@@ -509,7 +509,7 @@ CK_CC_INLINE size_t
 aligne_space(size_t n)
 {
     const size_t aligned_size = 8;
-    return (n + aligned_size - 1) / aligned_size * aligned_size;
+    return (n + aligned_size - 1) & ~(aligned_size-1)
 }
 
 CK_CC_INLINE static void

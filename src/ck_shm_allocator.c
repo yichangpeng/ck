@@ -15,6 +15,7 @@ aligned_fill_count(size_t n, size_t aligned_size)
     return n == 0 ? 0 : aligned_size - n;
 }
 
+//将填充的小块设置为空闲,使得返回的chunk和这个空闲块为algin_size的整数倍
 static void * 
 split_for_aligned(shm_alloc_chunk_t * c, size_t aligned_fill_count)
 {
@@ -38,7 +39,7 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
 
     int cpu_count = 8;
 #ifdef _SC_NPROCESSORS_CONF
-     cpu_count = sysconf(_SC_NPROCESSORS_CONF);
+     cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
     const int max_qsize = cpu_count * 25600;
     size_t n = sizeof(shm_small_alloc_impl_t) + sizeof(qnode_ptr) * max_qsize;
