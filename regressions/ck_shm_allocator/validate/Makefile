@@ -8,7 +8,7 @@ check: all
 	./validate 
 
 validate: validate.c ../../../include/ck_shm_allocator.h
-	$(CC) $(CFLAGS) -o validate validate.c ../../../src/ck_shm_allocator.c
+	$(CC) $(CFLAGS) -o validate validate.c ../../../src/ck_shm_allocator.c ../../../src/ck_ht.c ../../../src/ck_hs.c
 
 clean:
 	rm -rf *.dSYM *.exe *~ *.o $(OBJECTS)

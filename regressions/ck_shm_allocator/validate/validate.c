@@ -16,21 +16,21 @@ void test(void){
     shm_allocator_t * allocator = buf;
     initialize_shm_allocator(allocator,len,1*1024,true);
     printf("---------------------------------------------------------------------------------------------\r\n");
-    dump_allocator(allocator);
+    dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
     void *p1 = alloc_ex(allocator,523); 
-    dump_allocator(allocator);
+    dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
     void *p2 = alloc_ex(allocator,523); 
-    dump_allocator(allocator);
+    dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
     free_ex(allocator,p1,523,false);
-    dump_allocator(allocator);
+    dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
     free_ex(allocator,p2,523,false);
-    dump_allocator(allocator);
+    dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
-    free(buf);
+    free(allocator);
 }
 
 int main(void){
