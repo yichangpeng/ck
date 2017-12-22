@@ -383,7 +383,7 @@ shm_assert_impl(bool succ, const char *__assertion, const char * __file, unsigne
 #ifdef __assert_fail
     __assert_fail(__assertion, __file, __line, __function);
 #else
-    printf("%s:%u, %s: failed assertion `%s'\n", __file, __line, __function, __assertion);
+    fprintf(stderr."%s:%u, %s: failed assertion `%s'\n", __file, __line, __function, __assertion);
     abort();
 #endif
     }
