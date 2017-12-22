@@ -7,8 +7,13 @@
 
 #include <sched.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <ck_shm_allocator.h>
+#include <ck_malloc.h>
+#include <ck_hs.h>
+#include <ck_ht.h>
+#include "ck_ht_hash.h"
 
 inline static size_t 
 aligned_fill_count(size_t n, size_t aligned_size)
@@ -351,7 +356,7 @@ dump_chunk(shm_alloc_chunk_t * c)
 }
 
 void
-dump_allocator(shm_allocator_t * a)
+dump_shm_allocator(shm_allocator_t * a)
 {
    static const char * SS[] = {"unknown", "posix", "sysv", "mmap"};
    const char * s = a->_shm_type >= sizeof(SS) / sizeof(SS[0]) ? "-" : SS[a->_shm_type];
@@ -367,5 +372,220 @@ dump_allocator(shm_allocator_t * a)
     while(c != last){
         dump_chunk(c);
         c = shm_alloc_chunk_nextchunk(c);
+    }
+}
+
+
+static void
+shm_assert_impl(bool succ, const char *__assertion, const char * __file, unsigned int __line, const char * __function)
+{
+    if(!succ){
+#ifdef __assert_fail
+    __assert_fail(__assertion, __file, __line, __function);
+#else
+    printf("%s:%u, %s: failed assertion `%s'\n", __file, __line, __function, __assertion);
+    abort();
+#endif
+    }
+}
+
+#define shm_assert(expr) shm_assert_impl(expr, #expr, __FILE__, __LINE__, __PRETTY_FUNCTION__)
+
+CK_CC_INLINE static void 
+assert_size_and_length(size_t ptr, shm_allocator_t * a)
+{
+    shm_assert(ptr >= a->_head_size && ptr <= a->_buffer_length);    
+}
+
+CK_CC_INLINE static void 
+assert_large_chunk(void *ptr, char * base, size_t length)
+{
+    if(ptr != NULL){
+        size_t offset = (char*)ptr - base;
+        shm_assert(offset < length);
+    }
+}
+
+CK_CC_INLINE static void 
+assert_small_chunk(void *ptr, size_t length, ck_hs_t *set)
+{
+    if(ptr != NULL){
+        char * p = (char *) ptr;
+        //TODO:查找第一个比p大的地址
+        (void)set;
+        struct ck_hs_iterator it;
+        shm_alloc_chunk_t * c = NULL;
+        (void)it;
+        shm_assert(p >= (char *) shm_alloc_chunk_getspace(c) && p + length - (char *) c <= (long) shm_alloc_chunk_getsize(c));
+    }
+}
+
+typedef struct small_alloc_address{
+    char *  _address;
+    int     _size;
+    struct small_alloc_address * next;
+}small_alloc_address_t;
+
+static unsigned long
+hs_hash(const void *object, unsigned long seed)
+{
+    const char *c = object;
+    unsigned long h;
+    (void)seed;
+    h = *(const unsigned long*)c;
+    return h;
+}
+
+static bool
+hs_compare(const void *previous, const void *compare)
+{
+    return *(const uint64_t*)previous > *(const uint64_t*)compare;
+}
+
+static void *
+hs_malloc(size_t r)
+{
+    return malloc(r);
+}
+
+static void
+hs_free(void *p, size_t b, bool r)
+{
+    (void)b;
+    (void)r;
+    free(p);
+    return;
+}
+
+static struct ck_malloc my_allocator = { 
+    hs_malloc,
+    NULL,
+    hs_free
+};
+
+static void
+ht_hash_wrapper(ck_ht_hash_t *h, const void *key, size_t length, uint64_t seed)
+{   
+    h->value = (unsigned long)MurmurHash64A(key, length, seed);
+    return;
+} 
+
+static void
+shm_small_chunk_check_insert_address(small_alloc_address_t ** bins, char * entry, size_t len)
+{
+    small_alloc_address_t * temp = malloc(sizeof(small_alloc_address_t));
+    temp->_address = entry;
+    temp->_size = len;
+    temp->next = NULL;
+
+    if( NULL == *bins ){
+        *bins = temp;
+    }
+    else{
+        small_alloc_address_t * head = *bins;
+        small_alloc_address_t * compare = *bins;
+        while(compare && *(uint64_t*)(temp->_address) > *(uint64_t*)(compare->_address)){
+            compare = compare->next; 
+        }
+        temp->next = compare->next;
+        compare->next = temp;
+        *bins = head;
+    }
+}
+
+void
+check_shm_allocator(char * base, size_t length)
+{
+    shm_allocator_t * a = (shm_allocator_t*)base;
+
+    shm_assert(a->_buffer_length <= length);
+    shm_assert(a->_head_size < a->_buffer_length);
+    //shm_assert(a->_max_chunk_size < a->_buffer_length);
+    shm_assert(a->_max_alloc_size <= a->_max_chunk_size);
+    shm_assert(shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr) <= a->_buffer_length);
+    shm_assert(shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr) >= a->_head_size);
+
+    shm_alloc_chunk_t *c = get_first_chunk(a);
+    shm_alloc_chunk_t * e = get_last_chunk(a); 
+    shm_assert(e->_chunk_head & CINUSE_BIT);
+
+    ck_ht_t ptr2head;
+    ck_hs_t never_free_chunks;
+    if (false == ck_ht_init(&ptr2head, CK_HT_MODE_BYTESTRING, ht_hash_wrapper, &my_allocator, 2, 6602834)){
+        fprintf(stderr,"ck_ht_init error\r\n");
+        abort();
+    }
+
+    if (false == ck_hs_init(&never_free_chunks, CK_HS_MODE_SPMC | CK_HS_MODE_OBJECT | CK_HS_MODE_DELETE, hs_hash, hs_compare, &my_allocator, 2, 6602834)){
+        fprintf(stderr,"ck_hs_init error\r\n");
+        abort();
+    }
+
+    ck_ht_hash_t hash_value;
+    ck_ht_entry_t entry;
+
+    for(; c < e; ){
+        shm_alloc_chunk_t *nc = shm_alloc_chunk_nextchunk(c);
+        size_t ptr = (char*)c - base;
+        size_t h = c->_chunk_head;
+        shm_assert((h & ~INUSE_BITS) > 0);
+
+        assert_size_and_length(ptr, a);
+        ck_ht_hash(&hash_value, &ptr2head, &ptr, sizeof(ptr));
+        ck_ht_entry_set(&entry, hash_value, &ptr, sizeof(ptr), &h); 
+        ck_ht_put_spmc(&ptr2head, hash_value, &entry);
+
+        if(h & CINUSE_BIT){
+            shm_assert(!(h & WAIT_MERGE));
+        }
+        else if(h & WAIT_MERGE){
+            //shm_assert(!(h & PINUSE_BIT));
+        }
+
+        if(c->_flags & NEVER_FREE_BIT)
+            ck_hs_put_unique(&never_free_chunks, hs_hash(c, never_free_chunks.seed), c);
+
+        c = nc;
+    }
+
+    shm_assert(ck_hs_count(&never_free_chunks) > 0);
+    shm_assert(c == e);
+
+    size_t x = shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr);
+    //TODO:查找包含x的个数
+    //shm_assert(ck_ht_count(&ptr2head) != 0);
+    (void)x;
+    
+    assert_large_chunk(&a->_shm_manager, base, length);
+    shm_small_alloc_impl_t * small = a->_small_alloc_impl;
+    assert_large_chunk(small, base, length);
+
+    small_alloc_address_t * bins = NULL;
+    for(int i = 0; i < (int)(sizeof(small->_small_bin)/sizeof(small->_small_bin[0])); ++i)
+    {
+        int len = i * 8 + 8;
+        ck_stack_entry_t *pentry;
+        CK_STACK_FOREACH(&small->_small_bin[i], pentry){
+            assert_small_chunk(pentry, len, &never_free_chunks);
+            shm_small_chunk_check_insert_address(&bins,(char*)pentry,len);
+        }
+    }
+
+    qnode_helper h;
+    helper_setdata(&h,&small->_delay_q._push_tail);
+    for (uint32_t i = h.n1; i != h.n2; ++i) {
+        qnode_ptr p = small->_delay_q._v[i % small->_delay_q._max_size];
+        char * address = qnode_ptr_get_ptr(&p, base);
+        size_t len = qnode_ptr_get_size(&p);
+        assert_small_chunk(address, len, &never_free_chunks);
+        shm_small_chunk_check_insert_address(&bins,address,len);
+    }
+
+    small_alloc_address_t * p = bins;
+    while(p && p->next)
+    {
+       small_alloc_address_t * n = p->next;
+       shm_assert(p->_address + p->_size <= n->_address);
+       p = p ->next;
     }
 }
