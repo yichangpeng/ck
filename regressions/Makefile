@@ -21,7 +21,8 @@ DIR=array	\
     spinlock	\
     stack	\
     swlock	\
-    tflock 
+    tflock  \
+   	shm_allocator 
 
 .PHONY: all clean check
 
@@ -117,6 +118,7 @@ clean:
 	$(MAKE) -C ./ck_pflock/benchmark clean
 	$(MAKE) -C ./ck_hp/validate clean
 	$(MAKE) -C ./ck_hp/benchmark clean
+	$(MAKE) -C ./ck_shm_allocator/validate clean
 
 check: all
 	rc=0; 							\

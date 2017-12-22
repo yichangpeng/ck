@@ -131,7 +131,7 @@ struct shm_alloc_chunk{
             volatile uint16_t   _chunk_expire_unit;
         } in_chunk;
         volatile size_t _chunk_head;
-        volatile uint64_t _data;
+        uint64_t _data;
      } chunk_un;
 #define _head_low             chunk_un.in_chunk._head_low
 #define _head_high            chunk_un.in_chunk._head_high 
@@ -173,7 +173,8 @@ shm_alloc_chunk_cas(shm_alloc_chunk_t * origin, shm_alloc_chunk_t * ox, size_t h
     nx._chunk_head = head;
     nx._chunk_expire_unit = expire_util;
     nx._flags = flags;
-    return ck_pr_cas_ptr(origin, ox, &nx);
+
+    return ck_pr_cas_64(&origin->_data, ox->_data, nx._data);
 }
 
 /*
@@ -191,7 +192,7 @@ typedef union shm_chunk_ptr_union{
         volatile uint8_t    _loop_count_;
         volatile uint16_t   _ver_;
     } in_ptr;
-    volatile uint64_t       _data_;
+    uint64_t       _data_;
 #define _offset_low_ in_ptr._offset_low_
 #define _offset_high_ in_ptr._offset_high_
 #define _loop_count_ in_ptr._loop_count_
@@ -217,7 +218,8 @@ shm_chunk_ptr_cas(shm_chunk_ptr* origin, shm_chunk_ptr* ox, size_t offset, bool 
 {
     shm_chunk_ptr nx;
     shm_chunk_ptr_set(&nx, offset, ox->_loop_count_ + restart, ox->_ver_ );
-    return ck_pr_cas_ptr(origin, ox, &nx);
+
+    return ck_pr_cas_64(&origin->_data_, ox->_data_, nx._data_);
 }
 
 CK_CC_INLINE static bool 
@@ -321,7 +323,7 @@ struct shm_allocator
     shm_small_alloc_impl_t  *_small_alloc_impl;
 };
 
-CK_CC_INLINE static void *
+void *
 alloc_large(shm_large_alloc_impl_t * la, size_t n, size_t aligned_size, uint8_t add_chunk_flags);
 
 CK_CC_INLINE static bool 
@@ -440,7 +442,7 @@ gs(shm_small_alloc_impl_t * sa, size_t n)
    return sa->_small_bin + n/8 + 1; 
 }
 
-CK_CC_INLINE static bool 
+bool 
 initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsize);
 
 CK_CC_INLINE static int 
@@ -505,11 +507,11 @@ alloc_from_list(shm_small_alloc_impl_t * sa, size_t n)
     return NULL;
 }
 
-CK_CC_INLINE size_t 
+CK_CC_INLINE static size_t 
 aligne_space(size_t n)
 {
     const size_t aligned_size = 8;
-    return (n + aligned_size - 1) & ~(aligned_size-1)
+    return (n + aligned_size - 1) & ~(aligned_size-1);
 }
 
 CK_CC_INLINE static void
@@ -602,9 +604,24 @@ delay_free_large(shm_alloc_chunk_t * c)
 }
 
 CK_CC_INLINE static void
-free_large(shm_small_alloc_impl_t * sa, shm_alloc_chunk_t * c){
-    (void)sa;
-    (void)c;
+free_large(shm_alloc_chunk_t * c){
+    assert(c->_chunk_head & CINUSE_BIT);
+    
+    shm_alloc_chunk_t * nc = shm_alloc_chunk_nextchunk(c);
+    for(; ;){
+        shm_alloc_chunk_t ncd = *nc;
+        if(shm_alloc_chunk_cas(nc, &ncd, ncd._chunk_head & ~PINUSE_BIT, ncd._chunk_expire_unit, ncd._flags))
+            break;
+    }
+
+    for(; ;){
+        shm_alloc_chunk_t cd = *c;
+        size_t nh = cd._chunk_head & ~CINUSE_BIT;
+        if(!(cd._chunk_head & PINUSE_BIT))
+            nh |= WAIT_MERGE;
+        if(shm_alloc_chunk_cas(c, &cd, nh, 0, 0))
+            break;
+    }
 }
 
 CK_CC_INLINE static void * 
@@ -624,7 +641,7 @@ free_ex(shm_allocator_t * a, void * p, size_t n, bool delay)
         } else if (delay) {
             delay_free_large(get_chunk_by_ptr(p));
         } else {
-            free_large(a->_small_alloc_impl, get_chunk_by_ptr(p));
+            free_large(get_chunk_by_ptr(p));
         }
     }
 }
@@ -636,5 +653,8 @@ alloc_static(shm_allocator_t * a, size_t n)
         return alloc_large(&a->_large_alloc_impl, n, 8, NEVER_FREE_BIT);
     return alloc_small(a->_small_alloc_impl, n);
 }
+
+void
+dump_allocator(shm_allocator_t * a);
 
 #endif

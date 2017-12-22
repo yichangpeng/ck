@@ -6,6 +6,8 @@
  ************************************************************************/
 
 #include <sched.h>
+#include <stdio.h>
+#include <unistd.h>
 #include <ck_shm_allocator.h>
 
 inline static size_t 
@@ -75,7 +77,7 @@ try_step_current_chunk_ptr(shm_large_alloc_impl_t * la, uint16_t now, shm_chunk_
           )
         {
             if(shm_alloc_chunk_cas(c, &cd, cd._chunk_head, 0, 0))
-                free_large(allocator->_small_alloc_impl, c);
+                free_large(c);
             else{
                 sched_yield();
             }
@@ -111,7 +113,7 @@ try_merge_after(shm_allocator_t * allocator, shm_alloc_chunk_t * c, uint16_t now
                     // 修改过期时间，以免多个线程同时调用free_impl
                     // 只有成功修改的线程才能进入free_impl
                     if(shm_alloc_chunk_cas(nc, &ncd, ncd._chunk_head, 0, 0))
-                        free_large(allocator->_small_alloc_impl, nc);
+                        free_large(nc);
                     else{
                         sched_yield();
                     }
@@ -188,13 +190,16 @@ alloc_large(shm_large_alloc_impl_t * la, size_t n, size_t aligned_size, uint8_t 
         if(cd._flags & NEVER_FREE_BIT){
             if(ncd._flags & NEVER_FREE_BIT){
                 if(shm_alloc_chunk_cas(c, &cd, (cs+ncs)|(cd._chunk_head&INUSE_BITS), 0, cd._flags)){
-                    //两个chunk合并后，后者的chunk
+                    // 两个chunk合并后，后者的chunk的结构体信息大小空间回收，是sizeof(shm_alloc_chunk)，而不是后者永久块的内容 
                     if (ptr._data_ != la->_current_chunk_ptr._data_)
                     {
                         add_to_bins_and_fetch_total(allocator->_small_alloc_impl,nc,sizeof(shm_alloc_chunk_t));
                     }
                     else{
-                        // 其他线程移动了_current_chunk_ptr，可能存在相邻两个chunk同时被删的情况，为避免并发冲突，丢弃这8字节
+                        // 避免两个相邻的chunk同时被删的情况可能有问题
+                        // 其他线程移动了_current_chunk_ptr，可能存在相邻两个chunk同时被删的情况，为避免并发冲突，丢弃shm_alloc_chunk结构体这8字节
+                        // 极端情况:[NEVER_FREE_BIT块1][NEVER_FREE_BIT块2][NEVER_FREE_BIT块3],永久块1和2合并，同时另外的线程在合并永久块2和永久块3
+                        // 否则永久块2的长度可能会变长
                     }
                 }        
                 continue;
@@ -258,7 +263,7 @@ alloc_large(shm_large_alloc_impl_t * la, size_t n, size_t aligned_size, uint8_t 
             // 以下判断可保证ncd的取值是在c块分配之前（如果有的话）的值
             if( ptr._data_ == la->_current_chunk_ptr._data_ && cd._chunk_head == c->_chunk_head ){
                 if(shm_alloc_chunk_cas(nc, &ncd, (cs-n)|PINUSE_BIT, 0, 0)){
-                    if(shm_alloc_chunk_cas(nc, &ncd,(cs-n)|PINUSE_BIT|(cd._chunk_head & PINUSE_BIT), 0, add_chunk_flags)){
+                    if(shm_alloc_chunk_cas(c, &cd, n|CINUSE_BIT|(cd._chunk_head & PINUSE_BIT), 0, add_chunk_flags)){
                         try_step_current_chunk_ptr(la, now, &ptr, shm_chunk_ptr_offset(&ptr)+n);
                         return split_for_aligned(c,afc);
                     } 
@@ -318,7 +323,49 @@ initialize_shm_allocator(shm_allocator_t *alloc, size_t length, size_t max_alloc
     if(left_bytes > 0){
         c->_chunk_head = left_bytes | (is_beg?(c->_chunk_head&PINUSE_BIT):0);
     }
+    alloc->_large_alloc_impl._allocator = alloc;
 
     return initialize_shm_small_alloc_impl(alloc,max_allocsize);
 }
 
+static void
+dump_chunk(shm_alloc_chunk_t * c)
+{
+    const char* cinuse = "----------";
+    const char* pinuse = "----------";
+    const char* waitmerge = "----------";
+    const char* flags = "--------------";
+
+    if(c->_chunk_head & CINUSE_BIT)
+        cinuse = "CINUSE_BIT";
+    if(c->_chunk_head & PINUSE_BIT)
+        pinuse = "PINUSE_BIT";
+    if(c->_chunk_head & WAIT_MERGE)
+        waitmerge = "WAIT_MERGE";
+    if(c->_flags & FLAGS_DELAY_BIT)
+        flags = "DELAY_BIT";
+    else if(c->_flags & NEVER_FREE_BIT)
+        flags = "NEVER_FREE_BIT";
+
+    fprintf(stdout,"[%p:%10lu, %s, %s, %s, %s]\r\n",(void*)c,shm_alloc_chunk_getsize(c),cinuse,pinuse,waitmerge,flags);
+}
+
+void
+dump_allocator(shm_allocator_t * a)
+{
+   static const char * SS[] = {"unknown", "posix", "sysv", "mmap"};
+   const char * s = a->_shm_type >= sizeof(SS) / sizeof(SS[0]) ? "-" : SS[a->_shm_type];
+   fprintf(stdout,"head: {buf: %p, buf_len: %lu, version: %u, shm-type: %s, head_size: %lu,\r\n \
+                         _current_chunk_ptr: {%p,%u}, _custom_data_ptr: %p, now: %u}\r\n",
+          (void*)a,a->_buffer_length,a->_version,s,a->_head_size,
+          (void*)get_chunk(a,shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr)),
+           a->_large_alloc_impl._current_chunk_ptr._ver_,a->_custom_data_ptr,now_unit());
+
+   shm_alloc_chunk_t * c = get_first_chunk(a); 
+   shm_alloc_chunk_t * last = get_last_chunk(a); 
+
+    while(c != last){
+        dump_chunk(c);
+        c = shm_alloc_chunk_nextchunk(c);
+    }
+}
