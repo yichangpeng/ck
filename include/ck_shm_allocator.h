@@ -655,6 +655,8 @@ alloc_static(shm_allocator_t * a, size_t n)
 }
 
 void
-dump_allocator(shm_allocator_t * a);
+dump_shm_allocator(shm_allocator_t * a);
+void
+check_shm_allocator(char * a, size_t length);
 
 #endif

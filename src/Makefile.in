@@ -60,7 +60,7 @@ ck_barrier_tournament.o: $(SDIR)/ck_barrier_tournament.c
 ck_barrier_mcs.o: $(SDIR)/ck_barrier_mcs.c
 	$(CC) $(CFLAGS) -c -o $(TARGET_DIR)/ck_barrier_mcs.o $(SDIR)/ck_barrier_mcs.c
 
-ck_shm_allocator.o: $(SDIR)/ck_shm_allocator.c
+ck_shm_allocator.o: $(SDIR)/ck_shm_allocator.c $(SDIR)/ck_ht_hash.h $(SDIR)/ck_ht.c
 	$(CC) $(CFLAGS) -c -o $(TARGET_DIR)/ck_shm_allocator.o $(SDIR)/ck_shm_allocator.c
 
 clean:
