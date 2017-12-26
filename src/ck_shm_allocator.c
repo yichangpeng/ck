@@ -24,15 +24,15 @@ aligned_fill_count(size_t n, size_t aligned_size)
 
 //将填充的小块设置为空闲,使得返回的chunk和这个空闲块为algin_size的整数倍
 static void * 
-split_for_aligned(shm_alloc_chunk_t * c, size_t aligned_fill_count)
+split_for_aligned(shm_alloc_chunk_t * c, size_t _aligned_fill_count)
 {
-    if (aligned_fill_count == 0)
+    if (_aligned_fill_count == 0)
         return shm_alloc_chunk_getspace(c); 
-    shm_alloc_chunk_t * nc = (shm_alloc_chunk_t *) ((char *) c + aligned_fill_count);
-    nc->_chunk_head = (shm_alloc_chunk_getsize(c) - aligned_fill_count) | CINUSE_BIT;
+    shm_alloc_chunk_t * nc = (shm_alloc_chunk_t *) ((char *) c + _aligned_fill_count);
+    nc->_chunk_head = (shm_alloc_chunk_getsize(c) - _aligned_fill_count) | CINUSE_BIT;
     for (; ;) {
         shm_alloc_chunk_t cd = *c;
-        if (shm_alloc_chunk_cas(c, &cd, aligned_fill_count | (cd._chunk_head & PINUSE_BIT), 0, 0))
+        if (shm_alloc_chunk_cas(c, &cd, _aligned_fill_count | (cd._chunk_head & PINUSE_BIT), 0, 0))
             break;
 
     }

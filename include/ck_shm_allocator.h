@@ -409,7 +409,7 @@ delay_free_expire(uint16_t now, uint16_t expire)
 }
 
 CK_CC_INLINE static void *
-pop_expired(delay_queue_impl_t * delay_queue, char* base, uint16_t now_unit, size_t *psize)
+pop_expired(delay_queue_impl_t * delay_queue, char* base, uint16_t nowunit, size_t *psize)
 {
     for(; ;){
         delay_queue_impl_check_fp(delay_queue);
@@ -422,7 +422,7 @@ pop_expired(delay_queue_impl_t * delay_queue, char* base, uint16_t now_unit, siz
 
         uint32_t new_h = h.n1 + 1;
         qnode_ptr p = delay_queue->_v[h.n1 % delay_queue->_max_size];
-        if(!delay_free_expire(now_unit, p._expire_unit))
+        if(!delay_free_expire(nowunit, p._expire_unit))
             return NULL;
         if(ck_pr_cas_32(&delay_queue->_head, h.n1, new_h)){
             *psize = qnode_ptr_get_size(&p);
