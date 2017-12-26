@@ -439,7 +439,7 @@ get_buffer(shm_allocator_t * allocator){
 CK_CC_INLINE static ck_stack_t*
 gs(shm_small_alloc_impl_t * sa, size_t n)
 {
-   return sa->_small_bin + n/8 + 1; 
+   return sa->_small_bin + n/8 - 1; 
 }
 
 bool 
