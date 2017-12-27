@@ -21,13 +21,13 @@ void test(void){
     void *p1 = alloc_ex(allocator,523); 
     dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
-    void *p2 = alloc_ex(allocator,523); 
+    void *p2 = alloc_ex(allocator,23); 
     dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
     free_ex(allocator,p1,523,false);
     dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
-    free_ex(allocator,p2,523,false);
+    free_ex(allocator,p2,23,false);
     dump_shm_allocator(allocator);
     printf("---------------------------------------------------------------------------------------------\r\n");
     free(allocator);

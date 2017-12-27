@@ -50,7 +50,8 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
 #endif
     const int max_qsize = cpu_count * 25600;
     size_t n = sizeof(shm_small_alloc_impl_t) + sizeof(qnode_ptr) * max_qsize;
-    shm_small_alloc_impl_t * sa = alloc_large(&allocator->_large_alloc_impl, n, 8, NEVER_FREE_BIT);
+    /*ck_stack_pop_mpmc要求ck_stack_t的地址必须是16字节的整数倍,*/
+    shm_small_alloc_impl_t * sa = alloc_large(&allocator->_large_alloc_impl, n, 16, NEVER_FREE_BIT);
     if(sa == NULL)
         return false;
 
