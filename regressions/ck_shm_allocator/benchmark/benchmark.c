@@ -94,13 +94,13 @@ test_alloc_free(void *(*__alloc_start_routine) (void *), void *(*__free_start_ro
     const int thread_num = 10;
     pthread_t *thread = malloc(sizeof(pthread_t)*thread_num); 
     for(int i = 0; i < thread_num; ++i){
-        if(i % 3 == 0)
+        if(i % 3 == 1)
         {
-            int r = pthread_create(&thread[i], NULL, __alloc_start_routine, allocator);
+            int r = pthread_create(&thread[i], NULL, __free_start_routine, allocator);
             assert(r == 0);
         }
         else{
-            int r = pthread_create(&thread[i], NULL, __free_start_routine, allocator);
+            int r = pthread_create(&thread[i], NULL, __alloc_start_routine, allocator);
             assert(r == 0);
         }
     }
