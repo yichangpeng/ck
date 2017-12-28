@@ -268,6 +268,7 @@ struct shm_small_alloc_impl
     shm_allocator_t*    _allocator;
     delay_queue_impl_t  _delay_q;
     int                 _small_bin_total[small_bin_count];
+    char                _reserve[8];    //保留位,保证_small_bin数组起始地址是16的整数倍
     ck_stack_t          _small_bin[small_bin_count];
 };
 
@@ -293,6 +294,7 @@ struct shm_large_alloc_impl{
 */
 
 struct shm_manager_info{
+    CK_SLIST_ENTRY(shm_manager_info) list_entry; 
     void* _impl;
     char  _name[1];
 };
@@ -514,6 +516,13 @@ aligne_space(size_t n)
     return (n + aligned_size - 1) & ~(aligned_size-1);
 }
 
+CK_CC_INLINE static size_t 
+aligne_space16(size_t n)
+{
+    const size_t aligned_size = 16;
+    return (n + aligned_size - 1) & ~(aligned_size-1);
+}
+
 CK_CC_INLINE static void
 shm_small_alloc_impl_init(shm_small_alloc_impl_t * sa, shm_allocator_t * allocator){
     sa->_allocator = allocator;    
@@ -658,5 +667,76 @@ void
 dump_shm_allocator(shm_allocator_t * a);
 void
 check_shm_allocator(char * a, size_t length);
+
+typedef void (*create_op_parm1)(void *);
+typedef void (*create_op_parm2)(void *, size_t initialize_size);
+
+#define CREATE_IF_NOT_EXIST_SLIST                                   \
+    struct shm_manager_info * n = NULL, * prev = NULL;              \
+    shm_manager_t* list = &allocator->_shm_manager;                 \
+    CK_SLIST_FOREACH(n, list, list_entry){                          \
+        prev = n;                                                   \
+        if(!strcmp(n->_name,name))                                  \
+        {                                                           \
+            return n->_impl;                                        \
+        }                                                           \
+    }                                                               \
+    if(!create_if_not_exist)                                        \
+        return NULL;                                                \
+    const size_t name_len = strlen(name);                           \
+    const size_t len = sizeof(struct shm_manager_info) + name_len;  \
+    n = alloc_ex(allocator,len);                                    \
+    strcpy(n->_name,name);                                          \
+
+CK_CC_INLINE static void *
+get_container_parm1(shm_allocator_t * allocator, const char * name, bool create_if_not_exist, create_op_parm1 create_op)
+{
+    CREATE_IF_NOT_EXIST_SLIST
+    create_op(&n->_impl);
+
+    if(prev != NULL){
+        CK_SLIST_INSERT_AFTER(prev, n, list_entry);
+    }
+    else{
+        CK_SLIST_INSERT_HEAD(list, n, list_entry);
+    }
+    return &n->_impl;
+}
+
+CK_CC_INLINE static void *
+get_container_parm2(shm_allocator_t * allocator, const char * name, bool create_if_not_exist, size_t initialize_size, create_op_parm2 create_op)
+{
+    CREATE_IF_NOT_EXIST_SLIST
+    create_op(n,initialize_size);
+
+    CK_SLIST_INSERT_AFTER(prev, n, list_entry);
+    return &n->_impl;
+}
+
+static void                                                                            
+create_stack_container(void * container)                                               
+{                                                                                      
+    ck_stack_init(container);                                                          
+}  
+
+CK_CC_INLINE static ck_stack_t *
+get_stack(shm_allocator_t * allocator, const char * name, bool create_if_not_exist)
+{
+   return get_container_parm1(allocator,name,create_if_not_exist,create_stack_container); 
+}
+
+#define DEF_QUEUE_IMPL(liststructname,type)                         \
+        CK_STAILQ_HEAD(liststructname,type);                        \
+                                                                    \
+        static void                                                 \
+        create_queue_##type_container(void * container)             \
+        {                                                           \
+            struct liststructname *head =  (struct liststructname *)container;    \
+            head->stqh_first = NULL;                                \
+            head->stqh_last = &head->stqh_first;                    \
+        }                                                           \
+        
+#define GET_QUEUE(allocator, name, create_if_not_exist, type)       \
+        get_container_parm1(allocator,name,create_if_not_exist,create_queue_##type_container)
 
 #endif

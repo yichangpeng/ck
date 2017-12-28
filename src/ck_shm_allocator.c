@@ -297,7 +297,7 @@ initialize_shm_allocator(shm_allocator_t *alloc, size_t length, size_t max_alloc
     alloc->_shm_type = SHM_TYPE_UNKNOWN;
     memset(&alloc->_reserve,0,sizeof(alloc->_reserve));
     alloc->_custom_data_ptr = NULL;
-    alloc->_head_size = aligne_space(sizeof(shm_allocator_t) + SPACE_OFFSET) - SPACE_OFFSET;
+    alloc->_head_size = aligne_space16(sizeof(shm_allocator_t) + SPACE_OFFSET) - SPACE_OFFSET;
 
     shm_alloc_chunk_t * last_empty_chunk = get_last_chunk(alloc);
     last_empty_chunk->_chunk_head = CINUSE_BIT;
