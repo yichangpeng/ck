@@ -15,6 +15,7 @@
 #include <ck_pr.h>
 #include <ck_stack.h>
 #include <ck_queue.h>
+#include <ck_offset_ptr.h>
 
 CK_CC_INLINE static uint16_t 
 now_unit(void)
@@ -301,6 +302,7 @@ struct shm_manager_info{
 
 CK_SLIST_HEAD(shm_manager,shm_manager_info);
 
+ck_offset_ptr(shm_small_alloc_offset_ptr_config,shm_small_alloc_impl_t,0,47)
 /*
 *
 * shm_allocator:
@@ -322,11 +324,17 @@ struct shm_allocator
     size_t                  _head_size;
     shm_large_alloc_impl_t  _large_alloc_impl;
     shm_manager_t           _shm_manager;
-    shm_small_alloc_impl_t  *_small_alloc_impl;
+    ck_offset_ptr_t(shm_small_alloc_impl_t,0,47) _small_alloc_impl_offset_ptr;   //创建shm后设置或者已存在加载shm时使用获得_small_alloc_impl
+    shm_small_alloc_impl_t  *_small_alloc_impl;                                  
 };
 
 void *
 alloc_large(shm_large_alloc_impl_t * la, size_t n, size_t aligned_size, uint8_t add_chunk_flags);
+
+CK_CC_INLINE static void
+shm_large_alloc_impl_init(shm_large_alloc_impl_t * la, shm_allocator_t * allocator){
+    la->_allocator = allocator;    
+}
 
 CK_CC_INLINE static bool 
 allow_aligned_size(size_t aligned_size)
@@ -521,6 +529,12 @@ aligne_space16(size_t n)
 {
     const size_t aligned_size = 16;
     return (n + aligned_size - 1) & ~(aligned_size-1);
+}
+
+CK_CC_INLINE static shm_large_alloc_impl_t*
+shm_small_alloc_impl_get(shm_allocator_t * allocator){
+    ck_offset_ptr_t(shm_small_alloc_impl_t,0,47) *pptr = &(allocator->_small_alloc_impl_offset_ptr);
+    return (shm_small_alloc_impl_t*)ck_get_offset_ptr(shm_small_alloc_offset_ptr_config,pptr);
 }
 
 CK_CC_INLINE static void

@@ -55,9 +55,10 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
     if(sa == NULL)
         return false;
 
+    memset(sa->_small_bin_total,0,sizeof(sa->_small_bin_total));
     shm_small_alloc_impl_init(sa, allocator);
     allocator->_small_alloc_impl = sa;
-    memset(sa->_small_bin_total,0,sizeof(sa->_small_bin_total));
+    ck_set_offset_ptr(shm_small_alloc_offset_ptr_config,&allocator->_small_alloc_impl_offset_ptr,sa,false,false);
 
     for(size_t i = 0; i < sizeof(sa->_small_bin)/sizeof(sa->_small_bin[0]); ++i)
     {
@@ -329,7 +330,7 @@ initialize_shm_allocator(shm_allocator_t *alloc, size_t length, size_t max_alloc
     if(left_bytes > 0){
         c->_chunk_head = left_bytes | (is_beg?(c->_chunk_head&PINUSE_BIT):0);
     }
-    alloc->_large_alloc_impl._allocator = alloc;
+    shm_large_alloc_impl_init(& alloc->_large_alloc_impl,alloc);
 
     return initialize_shm_small_alloc_impl(alloc,max_allocsize);
 }
