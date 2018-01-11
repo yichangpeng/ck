@@ -79,6 +79,9 @@ regressions/ck_pflock/validate/validate
 regressions/ck_pr/benchmark/ck_pr_cas_64
 regressions/ck_pr/benchmark/ck_pr_cas_64_2
 regressions/ck_pr/benchmark/ck_pr_fas_64
+regressions/ck_pr/benchmark/ck_pr_neg_64
+regressions/ck_pr/benchmark/ck_pr_add_64
+regressions/ck_pr/benchmark/ck_pr_faa_64
 regressions/ck_pr/benchmark/fp
 regressions/ck_pr/validate/ck_pr_add
 regressions/ck_pr/validate/ck_pr_and
@@ -187,3 +190,10 @@ regressions/ck_tflock/benchmark/latency
 regressions/ck_tflock/benchmark/throughput
 regressions/ck_tflock/validate/validate
 regressions/ck_shm_allocator/validate/validate
+regressions/ck_shm_allocator/benchmark/benchmark
+regressions/ck_offset_ptr/validate/validate
+regressions/ck_shm_stack/validate/serial
+regressions/ck_shm_stack/validate/*pair
+regressions/ck_shm_stack/validate/*push
+regressions/ck_shm_stack/validate/*pop
+regressions/ck_shm_stack/validate/*push_pop

@@ -50,7 +50,7 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
 #endif
     const int max_qsize = cpu_count * 25600;
     size_t n = sizeof(shm_small_alloc_impl_t) + sizeof(qnode_ptr) * max_qsize;
-    /*ck_stack_pop_mpmc要求ck_stack_t的地址必须是16字节的整数倍,*/
+    /*ck_stack_pop_mpmc要求ck_shm_stack_t的地址必须是16字节的整数倍,*/
     shm_small_alloc_impl_t * sa = alloc_large(&allocator->_large_alloc_impl, n, 16, NEVER_FREE_BIT);
     if(sa == NULL)
         return false;
@@ -58,11 +58,11 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
     memset(sa->_small_bin_total,0,sizeof(sa->_small_bin_total));
     shm_small_alloc_impl_init(sa, allocator);
     allocator->_small_alloc_impl = sa;
-    ck_set_offset_ptr(shm_small_alloc_offset_ptr_config,&allocator->_small_alloc_impl_offset_ptr,sa,false,false);
+    sa_offset_ptr_set(&allocator->_small_alloc_impl_offset_ptr,sa,false,false);
 
     for(size_t i = 0; i < sizeof(sa->_small_bin)/sizeof(sa->_small_bin[0]); ++i)
     {
-        ck_stack_init(sa->_small_bin+i);
+        ck_shm_stack_init(sa->_small_bin+i);
     }
     delay_queue_init(&sa->_delay_q, max_qsize);
 
@@ -566,8 +566,8 @@ check_shm_allocator(char * base, size_t length)
     for(int i = 0; i < (int)(sizeof(small->_small_bin)/sizeof(small->_small_bin[0])); ++i)
     {
         int len = i * 8 + 8;
-        ck_stack_entry_t *pentry;
-        CK_STACK_FOREACH(&small->_small_bin[i], pentry){
+        ck_shm_stack_entry_t *pentry;
+        CK_SHM_STACK_FOREACH(&small->_small_bin[i], pentry){
             assert_small_chunk(pentry, len, &never_free_chunks);
             shm_small_chunk_check_insert_address(&bins,(char*)pentry,len);
         }

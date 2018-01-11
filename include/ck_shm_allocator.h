@@ -13,7 +13,7 @@
 #include <memory.h> 
 #include <stdbool.h>
 #include <ck_pr.h>
-#include <ck_stack.h>
+#include <ck_shm_stack.h>
 #include <ck_queue.h>
 #include <ck_offset_ptr.h>
 
@@ -270,7 +270,7 @@ struct shm_small_alloc_impl
     delay_queue_impl_t  _delay_q;
     int                 _small_bin_total[small_bin_count];
     char                _reserve[8];    //保留位,保证_small_bin数组起始地址是16的整数倍
-    ck_stack_t          _small_bin[small_bin_count];
+    ck_shm_stack_t      _small_bin[small_bin_count];
 };
 
 /*
@@ -302,7 +302,15 @@ struct shm_manager_info{
 
 CK_SLIST_HEAD(shm_manager,shm_manager_info);
 
-ck_offset_ptr(shm_small_alloc_offset_ptr_config,shm_small_alloc_impl_t,0,47)
+ck_offset_ptr(sa_config,
+              sa_offset_ptr,
+              sa_offset_change,
+              sa_offset_ptr_get,
+              sa_offset_ptr_set,
+              sa_offset_ptr_cas,
+              shm_small_alloc_impl_t,
+              0,47
+             )
 /*
 *
 * shm_allocator:
@@ -324,7 +332,7 @@ struct shm_allocator
     size_t                  _head_size;
     shm_large_alloc_impl_t  _large_alloc_impl;
     shm_manager_t           _shm_manager;
-    ck_offset_ptr_t(shm_small_alloc_impl_t,0,47) _small_alloc_impl_offset_ptr;   //创建shm后设置或者已存在加载shm时使用获得_small_alloc_impl
+    sa_offset_ptr           _small_alloc_impl_offset_ptr;   //创建shm后设置或者已存在加载shm时使用获得_small_alloc_impl
     shm_small_alloc_impl_t  *_small_alloc_impl;                                  
 };
 
@@ -446,7 +454,7 @@ get_buffer(shm_allocator_t * allocator){
     return (char*)allocator;
 }
 
-CK_CC_INLINE static ck_stack_t*
+CK_CC_INLINE static ck_shm_stack_t*
 gs(shm_small_alloc_impl_t * sa, size_t n)
 {
    return sa->_small_bin + n/8 - 1; 
@@ -465,50 +473,51 @@ try_free_delay_q(shm_small_alloc_impl_t * sa)
     void * p = NULL;
     size_t n = 0;
     while ((p = pop_expired(&sa->_delay_q, base, now, &n))) {
-        ck_stack_t * s = gs(sa,n);
-        ck_stack_push_mpmc(s,p);
+        ck_shm_stack_t * s = gs(sa,n);
+        ck_shm_stack_entry_t * nd = (ck_shm_stack_entry_t *) (p);
+        ck_shm_stack_push_mpmc(s,nd);
         ++count;
     }
     return count;
 }
 
-CK_CC_INLINE static ck_stack_entry_t * 
-alloc_from_list_inner(shm_small_alloc_impl_t * sa, ck_stack_t * s)
+CK_CC_INLINE static ck_shm_stack_entry_t * 
+alloc_from_list_inner(shm_small_alloc_impl_t * sa, ck_shm_stack_t * s)
 {
-    ck_stack_entry_t * nd = ck_stack_pop_mpmc(s);
+    ck_shm_stack_entry_t * nd = ck_shm_stack_pop_mpmc(s);
     if (nd == NULL && try_free_delay_q(sa) > 0)
-        nd = ck_stack_pop_mpmc(s);
+        nd = ck_shm_stack_pop_mpmc(s);
     return nd;
 }
 
 CK_CC_INLINE static void * 
-alloc_and_add_to_list(shm_small_alloc_impl_t * sa, ck_stack_t * s, size_t n)
+alloc_and_add_to_list(shm_small_alloc_impl_t * sa, ck_shm_stack_t * s, size_t n)
 {
     shm_allocator_t *allocator = sa->_allocator;
     size_t c = default_block_size / n;
     size_t size = n * c;
     char * p = (char *) alloc_large(&allocator->_large_alloc_impl, size, 8, NEVER_FREE_BIT);
     for (size_t i = n; i < size; i += n) {
-        ck_stack_entry_t * nd = (ck_stack_entry_t *) (p + i);
-        ck_stack_push_mpmc(s,nd);
+        ck_shm_stack_entry_t * nd = (ck_shm_stack_entry_t *) (p + i);
+        ck_shm_stack_push_mpmc(s,nd);
     }
     ck_pr_faa_int(&sa->_small_bin_total[s - sa->_small_bin], (int) c);
     return p;
 }
 
-CK_CC_INLINE static ck_stack_entry_t * 
+CK_CC_INLINE static ck_shm_stack_entry_t * 
 alloc_from_list(shm_small_alloc_impl_t * sa, size_t n)
 {
-    ck_stack_t * s = gs(sa,n);
-    ck_stack_entry_t * nd = alloc_from_list_inner(sa, s);
+    ck_shm_stack_t * s = gs(sa,n);
+    ck_shm_stack_entry_t * nd = alloc_from_list_inner(sa, s);
     if (nd != NULL)
         return nd;
     //TODO:待优化
     if (n <= 64) {
         nd = alloc_from_list(sa, n * 2);
         if (nd != NULL) {
-            ck_stack_entry_t * nd2 = (ck_stack_entry_t *)(((char *) nd) + n);
-            ck_stack_push_mpmc(s,nd2);
+            ck_shm_stack_entry_t * nd2 = (ck_shm_stack_entry_t *)(((char *) nd) + n);
+            ck_shm_stack_push_mpmc(s,nd2);
             ck_pr_faa_int(&sa->_small_bin_total[s - sa->_small_bin], 2);
             ck_pr_faa_int(&sa->_small_bin_total[gs(sa,n * 2) - sa->_small_bin], -1);
             return nd;
@@ -531,10 +540,10 @@ aligne_space16(size_t n)
     return (n + aligned_size - 1) & ~(aligned_size-1);
 }
 
-CK_CC_INLINE static shm_large_alloc_impl_t*
+CK_CC_INLINE static shm_small_alloc_impl_t*
 shm_small_alloc_impl_get(shm_allocator_t * allocator){
-    ck_offset_ptr_t(shm_small_alloc_impl_t,0,47) *pptr = &(allocator->_small_alloc_impl_offset_ptr);
-    return (shm_small_alloc_impl_t*)ck_get_offset_ptr(shm_small_alloc_offset_ptr_config,pptr);
+    sa_offset_ptr *pptr = &(allocator->_small_alloc_impl_offset_ptr);
+    return (shm_small_alloc_impl_t*)sa_offset_ptr_get(pptr);
 }
 
 CK_CC_INLINE static void
@@ -547,10 +556,10 @@ alloc_small(shm_small_alloc_impl_t * sa, size_t n)
 {
     n = aligne_space(n);
     assert(n <= max_alloc_size);
-    void * nd = alloc_from_list(sa, n);
+    ck_shm_stack_entry_t* nd = alloc_from_list(sa, n);
     if (nd)
         return nd;
-    ck_stack_t * s = gs(sa,n);
+    ck_shm_stack_t * s = gs(sa,n);
     return alloc_and_add_to_list(sa, s, n);
 }
 
@@ -559,9 +568,9 @@ push_callback(shm_small_alloc_impl_t * sa, qnode_ptr * i)
 {
     shm_allocator_t * allocator = sa->_allocator;
     char * base = get_buffer(allocator);
-    ck_stack_t * s = gs(sa,qnode_ptr_get_size(i));
-    ck_stack_entry_t * nd = qnode_ptr_get_ptr(i,base);
-    ck_stack_push_mpmc(s,nd);
+    ck_shm_stack_t * s = gs(sa,qnode_ptr_get_size(i));
+    ck_shm_stack_entry_t * nd = qnode_ptr_get_ptr(i,base);
+    ck_shm_stack_push_mpmc(s,nd);
 }
 
 CK_CC_INLINE static void
@@ -574,8 +583,8 @@ free_small(shm_small_alloc_impl_t * sa, void * p, size_t n, bool delay)
         char * base = get_buffer(allocator);
         delay_queue_impl_push(sa, &sa->_delay_q, base, (char *) p, n, now_unit() + DEFAULT_DELAY_UNIT, push_callback);
     } else {
-        ck_stack_t * s = gs(sa,n);
-        ck_stack_push_mpmc(s,p);
+        ck_shm_stack_t * s = gs(sa,n);
+        ck_shm_stack_push_mpmc(s,p);
     }
 }
 
@@ -730,10 +739,10 @@ get_container_parm2(shm_allocator_t * allocator, const char * name, bool create_
 static void                                                                            
 create_stack_container(void * container)                                               
 {                                                                                      
-    ck_stack_init(container);                                                          
+    ck_shm_stack_init(container);                                                          
 }  
 
-CK_CC_INLINE static ck_stack_t *
+CK_CC_INLINE static ck_shm_stack_t *
 get_stack(shm_allocator_t * allocator, const char * name, bool create_if_not_exist)
 {
    return get_container_parm1(allocator,name,create_if_not_exist,create_stack_container); 
