@@ -74,6 +74,7 @@ all:
 	$(MAKE) -C ./ck_shm_allocator/benchmark all
 	$(MAKE) -C ./ck_offset_ptr/validate all
 	$(MAKE) -C ./ck_shm_stack/validate all
+	$(MAKE) -C ./ck_shm_fifo/benchmark all
 
 clean:
 	$(MAKE) -C ./ck_array/validate clean
@@ -125,6 +126,7 @@ clean:
 	$(MAKE) -C ./ck_shm_allocator/benchmark clean
 	$(MAKE) -C ./ck_offset_ptr/validate clean
 	$(MAKE) -C ./ck_shm_stack/validate clean
+	$(MAKE) -C ./ck_shm_fifo/benchmark clean
 
 check: all
 	rc=0; 							\

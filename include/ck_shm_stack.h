@@ -66,7 +66,7 @@ typedef struct ck_shm_stack ck_shm_stack_t;
 CK_CC_INLINE static bool
 ck_shm_stack_trypush_upmc(struct ck_shm_stack *target, struct ck_shm_stack_entry *entry)
 {
-	entry->next.offset_data = CK_OFFSET_PTR_NULL;
+    cs_stack_offset_ptr_set(&entry->next,NULL,false,false);
 	cs_stack_offset_ptr stack;
     cs_stack_offset_ptr_change(&target->head_ptr,&stack);
 
@@ -135,7 +135,7 @@ ck_shm_stack_batch_pop_upmc(struct ck_shm_stack *target)
 CK_CC_INLINE static void
 ck_shm_stack_push_mpmc(struct ck_shm_stack *target, struct ck_shm_stack_entry *entry)
 {
-	entry->next.offset_data = CK_OFFSET_PTR_NULL;
+    cs_stack_offset_ptr_set(&entry->next,NULL,false,false);
     cs_stack_offset_ptr stack;
     cs_stack_offset_ptr_change(&target->head_ptr,&stack);
 
@@ -258,7 +258,7 @@ ck_shm_stack_batch_pop_npsc(struct ck_shm_stack *target)
 	struct ck_shm_stack_entry *n;
 
     n = cs_stack_offset_ptr_get(&target->head_ptr);
-	target->head_ptr.offset_data = CK_OFFSET_PTR_NULL;
+    cs_stack_offset_ptr_set(&target->head_ptr,NULL,false,false);
 
 	return n;
 }
@@ -295,7 +295,7 @@ ck_shm_stack_push_mpnc(struct ck_shm_stack *target, struct ck_shm_stack_entry *e
 CK_CC_INLINE static void
 ck_shm_stack_init(struct ck_shm_stack *stack)
 {
-	stack->head_ptr.offset_data = CK_OFFSET_PTR_NULL;
+    cs_stack_offset_ptr_set(&stack->head_ptr,NULL,false,false);
 	return;
 }
 
@@ -314,7 +314,7 @@ ck_shm_stack_pop_upmc(struct ck_shm_stack *target)
 /* Defines a container_of functions for */
 #define CK_SHM_STACK_CONTAINER(T, M, N) CK_CC_CONTAINER(ck_shm_stack_entry_t, T, M, N)
 
-#define CK_SHM_STACK_ISEMPTY(m) ( is_offset_ptr_null(cs_stack_config,(m)->head_ptr) )
+#define CK_SHM_STACK_ISEMPTY(m) ( is_offset_ptr_null(cs_stack_config,&((m)->head_ptr)) )
 #define CK_SHM_STACK_FIRST(s)   (cs_stack_offset_ptr_get(&((s)->head_ptr)))
 #define CK_SHM_STACK_NEXT(m)    (cs_stack_offset_ptr_get(&((m)->next)))
 #define CK_SHM_STACK_FOREACH(stack, entry)				\
@@ -323,7 +323,7 @@ ck_shm_stack_pop_upmc(struct ck_shm_stack *target)
 	     (entry) = CK_SHM_STACK_NEXT(entry))
 #define CK_SHM_STACK_FOREACH_SAFE(stack, entry, T)			\
 	for ((entry) = CK_SHM_STACK_FIRST(stack);			\
-	     (entry) != NULL && ((T) = (entry)->next, 1);	\
+	     (entry) != NULL && ((T) = cs_stack_offset_ptr_get(&(entry)->next), 1);	\
 	     (entry) = (T))
 
 #endif /* CK_SHM_STACK_H */

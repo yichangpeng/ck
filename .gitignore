@@ -197,3 +197,4 @@ regressions/ck_shm_stack/validate/*pair
 regressions/ck_shm_stack/validate/*push
 regressions/ck_shm_stack/validate/*pop
 regressions/ck_shm_stack/validate/*push_pop
+regressions/ck_shm_fifo/benchmark/latency

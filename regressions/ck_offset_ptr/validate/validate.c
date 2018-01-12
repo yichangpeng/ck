@@ -55,13 +55,13 @@ int main(void){
     set(&offset_ptr_a,NULL,false,false);
     pa = get(&offset_ptr_a);
     printf("a=%d,&a=%p,pa=%p,&b=%p\r\n",a.num,(void*)&a,pa,(void*)&b);
-    printf("%s\r\n",is_offset_ptr_null(int_config,offset_ptr_a)?"true":"false");
+    printf("%s\r\n",is_offset_ptr_null(int_config,&offset_ptr_a)?"true":"false");
 
     offset_ptr_a.offset_data = 1;
     pa = get(&offset_ptr_a);
     printf("a=%d,&a=%p,pa=%p,&b=%p\r\n",a.num,(void*)&a,pa,(void*)&b);
 
-    printf("%s\r\n",is_offset_ptr_null(int_config,offset_ptr_a)?"true":"false");
+    printf("%s\r\n",is_offset_ptr_null(int_config,&offset_ptr_a)?"true":"false");
 
     return 0;
 }

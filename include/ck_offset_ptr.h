@@ -14,7 +14,11 @@
 
 #define CK_OFFSET_PTR_NULL (size_t)1
 #define CK_OFFSET_PTR_ENTRY_NULL { 1 }
-#define is_offset_ptr_null(config,op) ((op.offset_data & config.OFFSET_BITS) == 1)
+#define is_offset_ptr_null(config,op) ((((op)->offset_data) & config.OFFSET_BITS) > 0)
+#define is_offset_ptr_marked(config,op) (((op)->offset_data & config.MARK_BIT) > 0)
+#define set_offset_ptr_marked(config,op,m) (op)->offset_data = (((op)->offset_data + config.VER_STEP) & ~config.MARK_BIT) | (m?config.MARK_BIT:0)
+#define is_offset_ptr_flaged(config,op) (((op)->offset_data & config.FALG_BIT) == 1)
+#define set_offset_ptr_flaged(config,op,m) (op)->offset_data = (((op)->offset_data + config.VER_STEP) & ~config.FALG_BIT) | (m?config.FALG_BIT:0)
 #define LINK(M,T,reserve,offset) M##_##T##_##reserve##_##offset
 #define data_from_other_func(T,reserve,offset) LINK(data_from_other,T,reserve,offset)
 #define data_from_other2_func(T,reserve,offset) LINK(data_from_other2,T,reserve,offset)
@@ -113,7 +117,7 @@ cas_func(offset_ptr_type_name *old_offset_ptr, offset_ptr_type_name *compare_off
 CK_CC_INLINE static void \
 transfer_func(offset_ptr_type_name *old_offset_ptr, offset_ptr_type_name *new_offset_ptr) \
 { \
-    new_offset_ptr->offset_data = data_from_other_func(T,reserve,offset)(new_offset_ptr, old_offset_ptr); \
+    new_offset_ptr->offset_data = data_from_other_func(T,reserve,offset)(new_offset_ptr,old_offset_ptr); \
 }\
     \
     \
