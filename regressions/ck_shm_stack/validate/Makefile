@@ -22,6 +22,11 @@ check: all
 	./upmc_push $(CORES) 1 0
 	./mpmc_trypush $(CORES) 1 0
 	./upmc_trypush $(CORES) 1 0
+	./mpmc_push_pop 4 1 0
+	./mpmc_trypush_pop 4 1 0
+	./pthreads_push_pop 4 1 0
+	./spinlock_eb_push_pop 4 1 0
+	./spinlock_push_pop 4 1 0
 
 serial: serial.c
 	$(CC) $(CFLAGS) -o serial serial.c

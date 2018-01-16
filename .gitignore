@@ -198,3 +198,12 @@ regressions/ck_shm_stack/validate/*push
 regressions/ck_shm_stack/validate/*pop
 regressions/ck_shm_stack/validate/*push_pop
 regressions/ck_shm_fifo/benchmark/latency
+regressions/ck_shm_fifo/validate/ck_shm_fifo_mpmc
+regressions/ck_shm_fifo/validate/ck_shm_fifo_mpmc_iterator
+regressions/ck_shm_fifo/validate/ck_shm_fifo_spsc
+regressions/ck_shm_fifo/validate/ck_shm_fifo_spsc_iterator
+regressions/ck_shm_fifo/validate/mpmc_push_pop
+regressions/ck_shm_fifo/validate/mpmc_trypush_pop
+regressions/ck_shm_fifo/validate/pthreads_push_pop
+regressions/ck_shm_fifo/validate/spinlock_eb_push_pop
+regressions/ck_shm_fifo/validate/spinlock_push_pop

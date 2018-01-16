@@ -52,9 +52,10 @@ int main(void){
     pa = get(&offset_ptr_a);
     printf("a=%d,&a=%p,pa=%p,&b=%p\r\n",a.num,(void*)&a,pa,(void*)&b);
 
-    set(&offset_ptr_a,NULL,false,false);
-    pa = get(&offset_ptr_a);
-    printf("a=%d,&a=%p,pa=%p,&b=%p\r\n",a.num,(void*)&a,pa,(void*)&b);
+    int_ptr offset_ptr_b;
+    set(&offset_ptr_b,NULL,false,false);
+    pa = get(&offset_ptr_b);
+    printf("111a=%d,&a=%p,pa=%p,&b=%p\r\n",a.num,(void*)&a,pa,(void*)&b);
     printf("%s\r\n",is_offset_ptr_null(int_config,&offset_ptr_a)?"true":"false");
 
     offset_ptr_a.offset_data = 1;

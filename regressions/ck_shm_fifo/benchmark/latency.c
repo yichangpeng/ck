@@ -33,11 +33,11 @@
 #include "../../common.h"
 
 #ifndef ENTRIES
-#define ENTRIES 2 
+#define ENTRIES 4096
 #endif
 
 #ifndef STEPS
-#define STEPS 1
+#define STEPS 40000
 #endif
 
 #if defined(CK_F_SHM_FIFO_MPMC)
@@ -85,7 +85,7 @@ main(void)
 
 		a += e - s;
 	}
-	printf("    spinlock_enqueue: %16" PRIu64 "\n", a / STEPS / (sizeof(spsc_entry) / sizeof(*spsc_entry)));
+	printf("        spinlock_enqueue: %16" PRIu64 "\n", a / STEPS / (sizeof(spsc_entry) / sizeof(*spsc_entry)));
 
 	a = 0;
 	for (i = 0; i < STEPS; i++) {
@@ -102,7 +102,7 @@ main(void)
 		e = rdtsc();
 		a += e - s;
 	}
-	printf("    spinlock_dequeue: %16" PRIu64 "\n", a / STEPS / (sizeof(spsc_entry) / sizeof(*spsc_entry)));
+	printf("        spinlock_dequeue: %16" PRIu64 "\n", a / STEPS / (sizeof(spsc_entry) / sizeof(*spsc_entry)));
 
 	a = 0;
 	for (i = 0; i < STEPS; i++) {
@@ -130,12 +130,12 @@ main(void)
 		a += e - s;
 	}
 	printf("ck_shm_fifo_spsc_dequeue: %16" PRIu64 "\n", a / STEPS / (sizeof(spsc_entry) / sizeof(*spsc_entry)));
+    assert(CK_SHM_FIFO_SPSC_ISEMPTY(&spsc_fifo));
 #endif
 
 #ifdef CK_F_SHM_FIFO_MPMC
 	a = 0;
 	struct entry *temp;
-    /*
 	for (i = 0; i < STEPS; i++) {
 		ck_shm_fifo_mpmc_init(&mpmc_fifo, &mpmc_stub);
 
@@ -150,7 +150,6 @@ main(void)
 		a += e - s;
 	}
 	printf("ck_shm_fifo_mpmc_enqueue: %16" PRIu64 "\n", a / STEPS / (sizeof(mpmc_entry) / sizeof(*mpmc_entry)));
-    */
 
 	a = 0;
 	for (i = 0; i < STEPS; i++) {
@@ -158,7 +157,7 @@ main(void)
 		for (j = 0; j < ENTRIES; j++)
         {
 		    temp = mpmc_entry + j;	
-            temp->value = j+1;
+            temp->value = j;
             ck_shm_fifo_mpmc_enqueue(&mpmc_fifo, &(temp->fifo_entry));
         }
 
@@ -166,11 +165,13 @@ main(void)
 		for (j = 0; j < ENTRIES; j++)
         {
 			ck_shm_fifo_mpmc_dequeue(&mpmc_fifo, &garbage,NULL,NULL);
-            fprintf(stdout,"%d\r\n", ((struct entry*)garbage)->value);
+
+            assert(((struct entry*)garbage)->value == (int)j);
         }
 		e = rdtsc();
 		a += e - s;
 	}
+    assert(CK_SHM_FIFO_MPMC_ISEMPTY(&mpmc_fifo));
 	printf("ck_shm_fifo_mpmc_dequeue: %16" PRIu64 "\n", a / STEPS / (sizeof(mpmc_entry) / sizeof(*mpmc_entry)));
 #endif
 

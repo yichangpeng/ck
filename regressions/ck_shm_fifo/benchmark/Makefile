@@ -1,6 +1,6 @@
 .PHONY: clean distribution
 
-OBJECTS=latency
+OBJECTS=latency 
 
 all: $(OBJECTS)
 

@@ -25,8 +25,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef CK_SHM_FIFIO_H
-#define CK_SHM_FIFIO_H
+#ifndef CK_SHM_FIFO_H
+#define CK_SHM_FIFO_H
 
 #include <ck_cc.h>
 #include <ck_md.h>
@@ -205,15 +205,15 @@ ck_shm_fifo_spsc_isempty(struct ck_shm_fifo_spsc *fifo)
 	return cs_fifo_spsc_offset_ptr_get(&head->next) == NULL;
 }
 
-#define CK_SHM_FIFIO_SPSC_ISEMPTY(f) ( is_offset_ptr_null(cs_fifo_spsc_config,&((f)->head)) )
-#define CK_SHM_FIFIO_SPSC_FIRST(f)   (cs_fifo_spsc_offset_ptr_get(&((f)->head)))
-#define CK_SHM_FIFIO_SPSC_NEXT(m)	(cs_fifo_spsc_offset_ptr_get(&(m)->next))
-#define CK_SHM_FIFIO_SPSC_FOREACH(fifo, entry)				\
-	for ((entry) = CK_SHM_FIFIO_SPSC_FIRST(fifo);			\
+#define CK_SHM_FIFO_SPSC_ISEMPTY(f) ( is_offset_ptr_null(cs_fifo_spsc_config,&((f)->head)) )
+#define CK_SHM_FIFO_SPSC_FIRST(f)   (cs_fifo_spsc_offset_ptr_get(&cs_fifo_spsc_offset_ptr_get(&((f)->head))->next))
+#define CK_SHM_FIFO_SPSC_NEXT(m)	(cs_fifo_spsc_offset_ptr_get(&(m)->next))
+#define CK_SHM_FIFO_SPSC_FOREACH(fifo, entry)				\
+	for ((entry) = CK_SHM_FIFO_SPSC_FIRST(fifo);			\
 	     (entry) != NULL;						\
-	     (entry) = CK_SHM_FIFIO_SPSC_NEXT(entry))
-#define CK_SHM_FIFIO_SPSC_FOREACH_SAFE(fifo, entry, T)			\
-	for ((entry) = CK_SHM_FIFIO_SPSC_FIRST(fifo);			\
+	     (entry) = CK_SHM_FIFO_SPSC_NEXT(entry))
+#define CK_SHM_FIFO_SPSC_FOREACH_SAFE(fifo, entry, T)			\
+	for ((entry) = CK_SHM_FIFO_SPSC_FIRST(fifo);			\
 	     (entry) != NULL && ((T) = cs_fifo_spsc_offset_ptr_get(&(entry)->next), 1);	\
 	     (entry) = (T))
 
@@ -305,7 +305,7 @@ ck_shm_fifo_mpmc_enqueue(struct ck_shm_fifo_mpmc *fifo,
             next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
             if (next_snapshot == NULL){
                 if(cs_fifo_mpmc_offset_ptr_cas(&tail_snapshot->next,&next,&update) == true){
-                    cs_fifo_mpmc_offset_ptr_cas(&fifo->tail,&fifo->tail,&update);
+                    cs_fifo_mpmc_offset_ptr_cas(&fifo->tail,&tail,&update);
                     return;
                 }
                 cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next); 
@@ -332,7 +332,7 @@ CK_CC_INLINE static bool
 ck_shm_fifo_mpmc_tryenqueue(struct ck_shm_fifo_mpmc *fifo,
 		        struct ck_shm_fifo_mpmc_entry *entry)
 {
-	cs_fifo_mpmc_offset_ptr tail = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL, update = CK_OFFSET_PTR_ENTRY_NULL;
+    cs_fifo_mpmc_offset_ptr tail = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL, update = CK_OFFSET_PTR_ENTRY_NULL;
     struct ck_shm_fifo_mpmc_entry * next_snapshot, * tail_snapshot;
 
     cs_fifo_mpmc_offset_ptr_set(&entry->next,NULL,false,false);
@@ -349,11 +349,18 @@ ck_shm_fifo_mpmc_tryenqueue(struct ck_shm_fifo_mpmc *fifo,
 
         next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
         if (next_snapshot == NULL){
-            if(cs_fifo_mpmc_offset_ptr_cas(&tail_snapshot->next,&next,&update) == false){
-                return false;
+            if(cs_fifo_mpmc_offset_ptr_cas(&tail_snapshot->next,&next,&update) == true){
+                cs_fifo_mpmc_offset_ptr_cas(&fifo->tail,&tail,&update);
+                return true;
             }
-            cs_fifo_mpmc_offset_ptr_cas(&tail,&tail,&update);
-            return true;
+            cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next); 
+            while(false == is_offset_ptr_marked(cs_fifo_mpmc_config,&next)){
+                cs_fifo_mpmc_offset_ptr_change(&next,&entry->next);
+                if(cs_fifo_mpmc_offset_ptr_cas(&tail_snapshot->next,&next,&update) == true){
+                    return true;
+                }
+                cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next); 
+            }
         }
         else{
             ck_shm_fifo_mpmc_try_fix_fail(fifo, next_snapshot, tail_snapshot);
@@ -373,10 +380,9 @@ ck_shm_fifo_mpmc_free_chain(struct ck_shm_fifo_mpmc *fifo, struct ck_shm_fifo_mp
 {
     if(cs_fifo_mpmc_offset_ptr_cas_ptr(&fifo->head, head_snapshot, newhead_snapshot)){
         while(head_snapshot != newhead_snapshot){
-            struct ck_shm_fifo_mpmc_entry * hn = head_snapshot;
-            head_snapshot = cs_fifo_mpmc_offset_ptr_get(&hn->next);
+            head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head_snapshot->next);
             if(free_fun)
-                free_fun(hn, free_fun_data);
+                free_fun(head_snapshot, free_fun_data);
         }
     }
 }
@@ -386,15 +392,15 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
 		     struct ck_shm_fifo_mpmc_entry **value, free_node_fun free_fun, const void * free_fun_data)
 {
     const int MAX_HOPS = 3;
-	cs_fifo_mpmc_offset_ptr head = CK_OFFSET_PTR_ENTRY_NULL, tail = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL, 
-                iterator = CK_OFFSET_PTR_ENTRY_NULL, new_next = CK_OFFSET_PTR_ENTRY_NULL;
+    cs_fifo_mpmc_offset_ptr head = CK_OFFSET_PTR_ENTRY_NULL, tail = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL, 
+    iterator = CK_OFFSET_PTR_ENTRY_NULL, new_next = CK_OFFSET_PTR_ENTRY_NULL;
     struct ck_shm_fifo_mpmc_entry * next_snapshot, * head_snapshot, * tail_snapshot, *iterator_snapshot, * nn, * in;
 
-	for (;;) {
+    while(true){
         cs_fifo_mpmc_offset_ptr_change(&fifo->head,&head);
-		ck_pr_fence_load();
+        ck_pr_fence_load();
         cs_fifo_mpmc_offset_ptr_change(&fifo->tail,&tail);
-		ck_pr_fence_load();
+        ck_pr_fence_load();
         head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head);
         cs_fifo_mpmc_offset_ptr_change(&head_snapshot->next,&next);
 
@@ -415,51 +421,56 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
                 iterator_snapshot = head_snapshot;
                 int hops = 0;
                 while(is_offset_ptr_marked(cs_fifo_mpmc_config,&next) 
+                      && iterator_snapshot != NULL
                       && iterator_snapshot != tail_snapshot
                       && cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot
                      ){
-                    cs_fifo_mpmc_offset_ptr_change(&next,&iterator);
-                    iterator_snapshot = cs_fifo_mpmc_offset_ptr_get(&iterator);
-                    cs_fifo_mpmc_offset_ptr_change(&iterator_snapshot->next,&next);
-                    next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
-                    ++hops;
-                }
+                         cs_fifo_mpmc_offset_ptr_change(&next,&iterator);
+                         iterator_snapshot = cs_fifo_mpmc_offset_ptr_get(&iterator);
+                         cs_fifo_mpmc_offset_ptr_change(&iterator_snapshot->next,&next);
+                         next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
+                         ++hops;
+                     }
 
                 if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) != head_snapshot)
-                   continue;
+                    continue;
                 else if(iterator_snapshot == tail_snapshot){
-                   ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, iterator_snapshot, free_fun, free_fun_data); 
+                    ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, iterator_snapshot, free_fun, free_fun_data); 
                 }
                 else{
                     nn = cs_fifo_mpmc_offset_ptr_get(&next);
+                    *value= nn;
                     in = cs_fifo_mpmc_offset_ptr_get(&iterator);
                     cs_fifo_mpmc_offset_ptr_change(&next,&new_next); 
                     set_offset_ptr_marked(cs_fifo_mpmc_config,&new_next,true);
                     if(cs_fifo_mpmc_offset_ptr_cas(&in->next,&next,&new_next)){
-                        if(hops > MAX_HOPS)
+                        if(hops >= MAX_HOPS)
                             ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, next_snapshot, free_fun, free_fun_data); 
-                        *value= nn;
+
                         return true;
                     }
                 }
             }
         }
-	}
+    }
+    return false;
 }
 
 CK_CC_INLINE static bool
 ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
 		    struct ck_shm_fifo_mpmc_entry **value, free_node_fun free_fun, const void * free_fun_data)
 {
-    const int MAX_HOPS = 3;
-    cs_fifo_mpmc_offset_ptr head, tail, next, iterator, new_next;
-    struct ck_shm_fifo_mpmc_entry * next_snapshot, * head_snapshot, * tail_snapshot, * nn, * in;
+    cs_fifo_mpmc_offset_ptr head = CK_OFFSET_PTR_ENTRY_NULL, tail = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL, 
+    iterator = CK_OFFSET_PTR_ENTRY_NULL, new_next = CK_OFFSET_PTR_ENTRY_NULL;
+    struct ck_shm_fifo_mpmc_entry * next_snapshot, * head_snapshot, * tail_snapshot, *iterator_snapshot, * nn, * in;
 
     cs_fifo_mpmc_offset_ptr_change(&fifo->head,&head);
     ck_pr_fence_load();
     cs_fifo_mpmc_offset_ptr_change(&fifo->tail,&tail);
     ck_pr_fence_load();
     head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head);
+    cs_fifo_mpmc_offset_ptr_change(&head_snapshot->next,&next);
+
     tail_snapshot = cs_fifo_mpmc_offset_ptr_get(&tail);
 
     if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot){
@@ -467,28 +478,30 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
         cs_fifo_mpmc_offset_ptr_change(&head_snapshot->next,&next);
         ck_pr_fence_load();
         next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
-        if (next_snapshot == tail_snapshot){
+        if (head_snapshot == tail_snapshot){
             if(next_snapshot == NULL)
                 return false;
             ck_shm_fifo_mpmc_try_fix_fail(fifo, next_snapshot, tail_snapshot);
         }
         else{
-            cs_fifo_mpmc_offset_ptr_change(&fifo->head,&iterator);
+            cs_fifo_mpmc_offset_ptr_change(&head,&iterator);
+            iterator_snapshot = head_snapshot;
             int hops = 0;
             while(is_offset_ptr_marked(cs_fifo_mpmc_config,&next) 
-                  && cs_fifo_mpmc_offset_ptr_get(&iterator) != cs_fifo_mpmc_offset_ptr_get(&tail)
+                  && iterator_snapshot != tail_snapshot
                   && cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot
                  ){
                      cs_fifo_mpmc_offset_ptr_change(&next,&iterator);
+                     iterator_snapshot = cs_fifo_mpmc_offset_ptr_get(&iterator);
+                     cs_fifo_mpmc_offset_ptr_change(&iterator_snapshot->next,&next);
                      next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
-                     cs_fifo_mpmc_offset_ptr_change(&next_snapshot->next,&next);
                      ++hops;
                  }
 
             if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) != head_snapshot)
                 return false;
-            else if(cs_fifo_mpmc_offset_ptr_get(&iterator) == cs_fifo_mpmc_offset_ptr_get(&tail)){
-                ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, next_snapshot, free_fun, free_fun_data); 
+            else if(iterator_snapshot == tail_snapshot){
+                ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, iterator_snapshot, free_fun, free_fun_data); 
             }
             else{
                 nn = cs_fifo_mpmc_offset_ptr_get(&next);
@@ -496,8 +509,6 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
                 cs_fifo_mpmc_offset_ptr_change(&next,&new_next); 
                 set_offset_ptr_marked(cs_fifo_mpmc_config,&new_next,true);
                 if(cs_fifo_mpmc_offset_ptr_cas(&in->next,&next,&new_next)){
-                    if(hops > MAX_HOPS)
-                        ck_shm_fifo_mpmc_free_chain(fifo,head_snapshot, next_snapshot, free_fun, free_fun_data); 
                     *value= nn;
                     return true;
                 }
@@ -507,19 +518,19 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
     return false;
 }
 
-#define CK_SHM_FIFIO_MPMC_ISEMPTY(f) ( is_offset_ptr_null(cs_fifo_mpmc_config,&((f)->head)) )
-#define CK_SHM_FIFIO_MPMC_FIRST(f)   (cs_fifo_mpmc_offset_ptr_get(&((f)->head)))
-#define CK_SHM_FIFIO_MPMC_NEXT(m)	(cs_fifo_mpmc_offset_ptr_get(&(m)->next))
-#define CK_SHM_FIFIO_MPMC_FOREACH(fifo, entry)				\
-	for ((entry) = CK_SHM_FIFIO_MPMC_FIRST(fifo);			\
+#define CK_SHM_FIFO_MPMC_ISEMPTY(f) ( is_offset_ptr_null(cs_fifo_mpmc_config,&((f)->head)) )
+#define CK_SHM_FIFO_MPMC_FIRST(f)   (cs_fifo_mpmc_offset_ptr_get(&cs_fifo_mpmc_offset_ptr_get(&((f)->head))->next))
+#define CK_SHM_FIFO_MPMC_NEXT(m)	(cs_fifo_mpmc_offset_ptr_get(&(m)->next))
+#define CK_SHM_FIFO_MPMC_FOREACH(fifo, entry)				\
+	for ((entry) = CK_SHM_FIFO_MPMC_FIRST(fifo);			\
 	     (entry) != NULL;						\
-	     (entry) = CK_SHM_FIFIO_MPMC_NEXT(entry))
-#define CK_SHM_FIFIO_MPMC_FOREACH_SAFE(fifo, entry, T)			\
-	for ((entry) = CK_SHM_FIFIO_MPMC_FIRST(fifo);			\
+	     (entry) = CK_SHM_FIFO_MPMC_NEXT(entry))
+#define CK_SHM_FIFO_MPMC_FOREACH_SAFE(fifo, entry, T)			\
+	for ((entry) = CK_SHM_FIFO_MPMC_FIRST(fifo);			\
 	     (entry) != NULL && ((T) = cs_fifo_mpmc_offset_ptr_get(&(entry)->next), 1);	\
 	     (entry) = (T))
 
 #endif /* CK_F_SHM_FIFO_MPMC */
 #endif /* CK_F_PR_CAS_PTR_2 */
 
-#endif /* CK_SHM_FIFIO_H */
+#endif /* CK_SHM_FIFO_H */

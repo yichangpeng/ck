@@ -192,6 +192,9 @@ ck_shm_stack_pop_mpmc(struct ck_shm_stack *target)
         cs_stack_offset_ptr_change(&target->head_ptr,&stack);
 		ck_pr_fence_store();
         next = cs_stack_offset_ptr_get(&stack); 
+        if(next == NULL)
+            return NULL;
+		ck_pr_fence_store();
     }
     return next;
 }

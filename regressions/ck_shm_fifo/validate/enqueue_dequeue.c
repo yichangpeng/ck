@@ -27,10 +27,7 @@
 #include <assert.h>
 #include <ck_cc.h>
 #include <ck_pr.h>
-#ifdef SPINLOCK
-#include <ck_spinlock.h>
-#endif
-#include <ck_shm_stack.h>
+#include <ck_shm_fifo.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -44,40 +41,22 @@
 
 #ifndef ITEMS
 #define ITEMS (5765760)
+//#define ITEMS (1)
 #endif
 
 #define TVTOD(tv) ((tv).tv_sec+((tv).tv_usec / (double)1000000))
+#define CK_SHM_FIFO_CONTAINER(T, M, N) CK_CC_CONTAINER(ck_shm_fifo_mpmc_entry_t, T, M, N)
 
 static unsigned int push_threads_count = 0;
 static unsigned int push_count = 0;
 static unsigned int pop_count = 0;
 struct entry {
 	int value;
-#if defined(SPINLOCK) || defined(PTHREADS)
-	struct entry *next;
-#else
-	ck_shm_stack_entry_t next;
-#endif
+	ck_shm_fifo_mpmc_entry_t next;
 } CK_CC_CACHELINE;
 
-#ifdef SPINLOCK
-static struct entry *stack CK_CC_CACHELINE;
-ck_spinlock_fas_t stack_spinlock = CK_SPINLOCK_FAS_INITIALIZER;
-#define UNLOCK ck_spinlock_fas_unlock
-#if defined(EB)
-#define LOCK ck_spinlock_fas_lock_eb
-#else
-#define LOCK ck_spinlock_fas_lock
-#endif
-#elif defined(PTHREADS)
-static struct entry *stack CK_CC_CACHELINE;
-pthread_mutex_t stack_spinlock = PTHREAD_MUTEX_INITIALIZER;
-#define LOCK pthread_mutex_lock
-#define UNLOCK pthread_mutex_unlock
-#else
-static ck_shm_stack_t stack CK_CC_CACHELINE;
-CK_SHM_STACK_CONTAINER(struct entry, next, getvalue)
-#endif
+static ck_shm_fifo_mpmc_t fifo CK_CC_CACHELINE;
+CK_SHM_FIFO_CONTAINER(struct entry, next, getvalue)
 
 static struct affinity affinerator;
 static unsigned long long nthr;
@@ -85,9 +64,9 @@ static volatile unsigned int barrier = 0;
 static unsigned int critical;
 
 static void *
-stack_push_thread(void* unused CK_CC_UNUSED)
+fifo_push_thread(void* unused CK_CC_UNUSED)
 {
-	struct entry *entry;
+	struct entry *entry = NULL;
 	unsigned long long i, n = ITEMS;
 
 	if (aff_iterate(&affinerator)) {
@@ -101,22 +80,12 @@ stack_push_thread(void* unused CK_CC_UNUSED)
         entry = malloc(sizeof(struct entry));
         entry->value = i;
 #if defined(MPMC)
-                ck_shm_stack_push_mpmc(&stack, &entry->next);
+        ck_shm_fifo_mpmc_enqueue(&fifo, &entry->next);
 #elif defined(TRYMPMC)
-		while (ck_shm_stack_trypush_mpmc(&stack, &entry->next) == false)
+		while (ck_shm_fifo_mpmc_tryenqueue(&fifo, &entry->next) == false)
 			ck_pr_stall();
-#elif defined(UPMC)
-                ck_shm_stack_push_upmc(&stack, &entry->next);
-#elif defined(TRYUPMC)
-		while (ck_shm_stack_trypush_upmc(&stack, &entry->next) == false)
-			ck_pr_stall();
-#elif defined(SPINLOCK) || defined(PTHREADS)
-		LOCK(&stack_spinlock);
-		ck_pr_store_ptr(&entry->next, stack);
-		ck_pr_store_ptr(&stack, entry);
-		UNLOCK(&stack_spinlock);
 #else
-#               error Undefined operation.
+#     error Undefined operation.
 #endif
         ck_pr_inc_uint(&push_count);
         //fprintf(stdout,"push:%lu,vaule:%d,count:%u\r\n",syscall(SYS_gettid),entry->value,ck_pr_load_uint(&push_count));
@@ -127,13 +96,13 @@ stack_push_thread(void* unused CK_CC_UNUSED)
 }
 
 static void *
-stack_pop_thread(void* unused CK_CC_UNUSED)
+fifo_pop_thread(void* unused CK_CC_UNUSED)
 {
-#if (defined(MPMC) && defined(CK_F_SHM_STACK_POP_MPMC)) || (defined(UPMC) && defined(CK_F_SHM_STACK_POP_UPMC)) || (defined(TRYUPMC) && defined(CK_F_SHM_STACK_TRYPOP_UPMC)) || (defined(TRYMPMC) && defined(CK_F_SHM_STACK_TRYPOP_MPMC))
-	ck_shm_stack_entry_t *ref = NULL;
+#if (defined(MPMC) && defined(CK_F_SHM_FIFO_MPMC)) || (defined(TRYMPMC))
+	ck_shm_fifo_mpmc_entry_t *ref = NULL;
 #endif
 
-	struct entry *entry;
+	struct entry *entry = NULL;
 	unsigned int seed;
 	int j;
 
@@ -151,9 +120,9 @@ stack_pop_thread(void* unused CK_CC_UNUSED)
 				__asm__ __volatile__("" ::: "memory");
 		}
 
+#ifdef CK_F_SHM_FIFO_MPMC
 #if defined(MPMC)
-#ifdef CK_F_SHM_STACK_POP_MPMC
-		ref = ck_shm_stack_pop_mpmc(&stack);
+		ck_shm_fifo_mpmc_dequeue(&fifo, &ref, NULL, NULL);
         if(ref == NULL)
         {
             if(ck_pr_load_uint(&push_threads_count) == 0)
@@ -164,11 +133,8 @@ stack_pop_thread(void* unused CK_CC_UNUSED)
             }
         }
 		entry = getvalue(ref);
-        ref = NULL;
-#endif
 #elif defined(TRYMPMC)
-#ifdef CK_F_SHM_STACK_TRYPOP_MPMC
-		if (ck_shm_stack_trypop_mpmc(&stack, &ref) == false)
+		if (ck_shm_fifo_mpmc_trydequeue(&fifo, &ref, NULL, NULL) == false)
         {
             if(ck_pr_load_uint(&push_threads_count) == 0)
                 break;
@@ -180,64 +146,26 @@ stack_pop_thread(void* unused CK_CC_UNUSED)
         }
 	
 		entry = getvalue(ref);
-        ref = NULL;
-#endif /* CK_F_SHM_STACK_TRYPOP_MPMC */
-#elif defined(UPMC)
-		ref = ck_shm_stack_pop_upmc(&stack);
-        if(ref == NULL)
-        {
-            if(ck_pr_load_uint(&push_threads_count) == 0)
-                break;
-            else{
-                usleep(500);
-                continue;
-            }
-        }
-
-		entry = getvalue(ref);
-        ref = NULL;
-#elif defined(SPINLOCK) || defined(PTHREADS)
-		LOCK(&stack_spinlock);
-		entry = stack;
-        if(entry == NULL)
-        {
-            if(ck_pr_load_uint(&push_threads_count) == 0)
-            {
-		        UNLOCK(&stack_spinlock);
-                break;
-            }
-            else{
-		        UNLOCK(&stack_spinlock);
-                usleep(500);
-                continue;
-            }
-        }
-
-		stack = stack->next;
-		UNLOCK(&stack_spinlock);
+#endif
 #else
 #		error Undefined operation.
 #endif
         ck_pr_inc_uint(&pop_count);
-        //fprintf(stdout,"pop:%lu,vaule:%d,count:%u\r\n",syscall(SYS_gettid),entry->value,ck_pr_load_uint(&pop_count));
-        if(entry)
-        {
-            free(entry);  
-            entry = NULL;
-        }
+        //if(ref && entry)
+            //fprintf(stdout,"pop:%lu,vaule:%d,count:%u\r\n",syscall(SYS_gettid),entry->value,ck_pr_load_uint(&pop_count));
+
+        ref = NULL;
+        //can not free,pop may return earlier than push,if free the entry,the push thread can not access the entry
+        //free(entry);
+        entry = NULL;
 	}
 
 	return (NULL);
 }
 static void
-stack_assert(void)
+fifo_assert(void)
 {
-
-#if defined(SPINLOCK) || defined(PTHREADS)
-	assert(stack == NULL);
-#else
-	assert(CK_SHM_STACK_ISEMPTY(&stack));
-#endif
+	assert(CK_SHM_FIFO_MPMC_ISEMPTY(&fifo));
 	return;
 }
 
@@ -248,13 +176,13 @@ main(int argc, char *argv[])
 	pthread_t *thread;
 	struct timeval stv, etv;
 
-#if (defined(TRYMPMC) || defined(MPMC)) && (!defined(CK_F_SHM_STACK_PUSH_MPMC) || !defined(CK_F_SHM_STACK_POP_MPMC))
+#if (defined(TRYMPMC) || defined(MPMC)) && (!defined(CK_F_SHM_FIFO_MPMC))
         fprintf(stderr, "Unsupported.\n");
         return 0;
 #endif
 
 	if (argc != 4) {
-		ck_error("Usage: stack <threads> <delta> <critical>\n");
+		ck_error("Usage: fifo <threads> <delta> <critical>\n");
 	}
 
 	{
@@ -293,8 +221,9 @@ main(int argc, char *argv[])
 	thread = malloc(sizeof(pthread_t) * nthr);
 	assert(thread != NULL);
 
-#if (defined(MPMC) && defined(CK_F_SHM_STACK_POP_MPMC)) || (defined(UPMC) && defined(CK_F_SHM_STACK_POP_UPMC)) || (defined(TRYUPMC) && defined(CK_F_SHM_STACK_TRYPOP_UPMC)) || (defined(TRYMPMC) && defined(CK_F_SHM_STACK_TRYPOP_MPMC))
-    ck_shm_stack_init(&stack);
+#if (defined(MPMC) && defined(CK_F_SHM_FIFO_MPMC)) || (defined(TRYMPMC) && defined(CK_F_SHM_FIFO_MPMC))
+    ck_shm_fifo_mpmc_entry_t * dummy = malloc(sizeof(ck_shm_fifo_mpmc_entry_t));
+    ck_shm_fifo_mpmc_init(&fifo,dummy);
 #endif
 
     push_threads_count = (nthr+1)/2;
@@ -302,9 +231,9 @@ main(int argc, char *argv[])
 
     for (i = 0; i < nthr; i++){
         if(i%2 == 0)
-		    pthread_create(&thread[i], NULL, stack_push_thread, NULL);
+		    pthread_create(&thread[i], NULL, fifo_push_thread, NULL);
         else
-		    pthread_create(&thread[i], NULL, stack_pop_thread, NULL);
+		    pthread_create(&thread[i], NULL, fifo_pop_thread, NULL);
     }
 
 	common_gettimeofday(&stv, NULL);
@@ -313,7 +242,7 @@ main(int argc, char *argv[])
 		pthread_join(thread[i], NULL);
 	common_gettimeofday(&etv, NULL);
 
-	stack_assert();
+	fifo_assert();
 #ifdef _WIN32
 	printf("%3llu %.6f\n", nthr, TVTOD(etv) - TVTOD(stv));
 #else
