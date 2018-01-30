@@ -26,7 +26,7 @@
 #define offset_ptr_config_struct(T,reserve,offset) LINK(offset_ptr_config,T,reserve,offset)
 #define offset_ptr_struct(T,reserve,offset) LINK(offset_ptr,T,reserve,offset)
 
-#define ck_offset_ptr(config_name,offset_ptr_type_name,transfer_func,get_func,set_func,cas_func,T,reserve,offset)  \
+#define ck_offset_ptr(config_name,offset_ptr_type_name,clone_func,get_func,set_func,cas_func,T,reserve,offset)  \
         static struct offset_ptr_config_struct(T,reserve,offset) { \
             size_t MAX_POINTER_VALUE;   \
             size_t OFFSET_BITS;         \
@@ -115,7 +115,7 @@ cas_func(offset_ptr_type_name *old_offset_ptr, offset_ptr_type_name *compare_off
     \
     \
 CK_CC_INLINE static void \
-transfer_func(offset_ptr_type_name *old_offset_ptr, offset_ptr_type_name *new_offset_ptr) \
+clone_func(offset_ptr_type_name *old_offset_ptr, offset_ptr_type_name *new_offset_ptr) \
 { \
     new_offset_ptr->offset_data = data_from_other_func(T,reserve,offset)(new_offset_ptr,old_offset_ptr); \
 }\

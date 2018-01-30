@@ -128,7 +128,7 @@ struct shm_alloc_chunk{
         {
             volatile uint32_t   _head_low;
             volatile uint8_t    _head_high;
-            volatile uint8_t    _flags;
+            volatile uint8_t    _chunk_flags;
             volatile uint16_t   _chunk_expire_unit;
         } in_chunk;
         volatile size_t _chunk_head;
@@ -136,7 +136,7 @@ struct shm_alloc_chunk{
      } chunk_un;
 #define _head_low             chunk_un.in_chunk._head_low
 #define _head_high            chunk_un.in_chunk._head_high 
-#define _flags                chunk_un.in_chunk._flags
+#define _flags                chunk_un.in_chunk._chunk_flags
 #define _chunk_expire_unit    chunk_un.in_chunk._chunk_expire_unit
 #define _chunk_head           chunk_un._chunk_head
 #define _data                 chunk_un._data
@@ -302,7 +302,7 @@ struct shm_manager_info{
 
 CK_SLIST_HEAD(shm_manager,shm_manager_info);
 
-ck_offset_ptr(sa_config,
+ck_offset_ptr(small_config,
               sa_offset_ptr,
               sa_offset_change,
               sa_offset_ptr_get,
@@ -762,4 +762,10 @@ get_stack(shm_allocator_t * allocator, const char * name, bool create_if_not_exi
 #define GET_QUEUE(allocator, name, create_if_not_exist, type)       \
         get_container_parm1(allocator,name,create_if_not_exist,create_queue_##type_container)
 
+
+#define GET_OBJECT_PARM1(allocator, name, create_if_not_exist) \
+        get_container_parm1(allocator,name,create_if_not_exist,create_stack_container);
+
+#define GET_OBJECT_PARM2(allocator, name, create_if_not_exist, initop) \
+        get_container_parm2(allocator,name,create_if_not_exist,create_stack_container,initop);
 #endif

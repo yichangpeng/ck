@@ -33,6 +33,7 @@
 #include <ck_pr.h>
 #include <ck_stdbool.h>
 #include <ck_stddef.h>
+#include <malloc.h>
 
 struct _ck_array {
 	unsigned int n_committed;
@@ -88,6 +89,37 @@ ck_array_initialized(struct ck_array *array)
 
 	return ck_pr_load_ptr(&array->active) != NULL;
 }
+
+CK_CC_INLINE static void
+ default_array_free(void *p, size_t m, bool d)
+{
+	(void)m;
+	(void)d;
+
+	free(p);
+	return;
+}
+
+CK_CC_INLINE static void *
+default_array_malloc(size_t b)
+{
+	return malloc(b);
+}
+
+CK_CC_INLINE static void *
+default_array_realloc(void *r, size_t a, size_t b, bool d)
+{
+	(void)a;
+	(void)d;
+
+	return realloc(r, b);
+}
+
+CK_CC_INLINE static struct ck_malloc default_array_allocator = {
+    .malloc = default_array_malloc,
+    .free = default_array_free,
+    .realloc = default_array_realloc
+};
 
 #define CK_ARRAY_FOREACH(a, i, b)		   	\
 	(i)->snapshot = ck_pr_load_ptr(&(a)->active);	\

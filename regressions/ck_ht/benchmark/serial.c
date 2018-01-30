@@ -69,7 +69,7 @@ static struct ck_malloc my_allocator = {
 static void
 table_init(void)
 {
-	unsigned int mode = CK_HT_MODE_BYTESTRING;
+	unsigned int mode = CK_HT_MODE_DIRECT;
 
 #ifdef HT_DELETE
 	mode |= CK_HT_WORKLOAD_DELETE;
@@ -133,6 +133,7 @@ table_insert(const char *value)
 	size_t l = strlen(value);
 
 	ck_ht_hash(&h, &ht, value, l);
+    int 
 	ck_ht_entry_set(&entry, h, value, l, "VALUE");
 	return ck_ht_put_spmc(&ht, h, &entry);
 }

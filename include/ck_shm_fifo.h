@@ -229,7 +229,7 @@ typedef struct ck_shm_fifo_mpmc_entry ck_shm_fifo_mpmc_entry_t;
 
 ck_offset_ptr(cs_fifo_mpmc_config,
               cs_fifo_mpmc_offset_ptr,
-              cs_fifo_mpmc_offset_ptr_change,
+              cs_fifo_mpmc_offset_ptr_clone,
               cs_fifo_mpmc_offset_ptr_get,
               cs_fifo_mpmc_offset_ptr_set,
               cs_fifo_mpmc_offset_ptr_cas,
@@ -294,12 +294,12 @@ ck_shm_fifo_mpmc_enqueue(struct ck_shm_fifo_mpmc *fifo,
 	ck_pr_fence_store_atomic();
 
 	for (;;) {
-        cs_fifo_mpmc_offset_ptr_change(&fifo->tail,&tail);
+        cs_fifo_mpmc_offset_ptr_clone(&fifo->tail,&tail);
 		ck_pr_fence_load();
         tail_snapshot = cs_fifo_mpmc_offset_ptr_get(&tail);
 
         if(cs_fifo_mpmc_offset_ptr_get(&fifo->tail) == tail_snapshot){
-            cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next);
+            cs_fifo_mpmc_offset_ptr_clone(&tail_snapshot->next,&next);
             ck_pr_fence_load();
 
             next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
@@ -308,13 +308,13 @@ ck_shm_fifo_mpmc_enqueue(struct ck_shm_fifo_mpmc *fifo,
                     cs_fifo_mpmc_offset_ptr_cas(&fifo->tail,&tail,&update);
                     return;
                 }
-                cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next); 
+                cs_fifo_mpmc_offset_ptr_clone(&tail_snapshot->next,&next); 
                 while(false == is_offset_ptr_marked(cs_fifo_mpmc_config,&next)){
-                    cs_fifo_mpmc_offset_ptr_change(&next,&entry->next);
+                    cs_fifo_mpmc_offset_ptr_clone(&next,&entry->next);
                     if(cs_fifo_mpmc_offset_ptr_cas(&tail_snapshot->next,&next,&update) == true){
                         return;
                     }
-                    cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next); 
+                    cs_fifo_mpmc_offset_ptr_clone(&tail_snapshot->next,&next); 
                 }
             }
             else{
@@ -339,12 +339,12 @@ ck_shm_fifo_mpmc_tryenqueue(struct ck_shm_fifo_mpmc *fifo,
     cs_fifo_mpmc_offset_ptr_set(&update,entry,false,false);
     ck_pr_fence_store_atomic();
 
-    cs_fifo_mpmc_offset_ptr_change(&fifo->tail,&tail);
+    cs_fifo_mpmc_offset_ptr_clone(&fifo->tail,&tail);
     ck_pr_fence_load();
     tail_snapshot = cs_fifo_mpmc_offset_ptr_get(&tail);
 
     if(cs_fifo_mpmc_offset_ptr_get(&fifo->tail) == tail_snapshot){
-        cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next);
+        cs_fifo_mpmc_offset_ptr_clone(&tail_snapshot->next,&next);
         ck_pr_fence_load();
 
         next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
@@ -353,13 +353,13 @@ ck_shm_fifo_mpmc_tryenqueue(struct ck_shm_fifo_mpmc *fifo,
                 cs_fifo_mpmc_offset_ptr_cas(&fifo->tail,&tail,&update);
                 return true;
             }
-            cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next); 
+            cs_fifo_mpmc_offset_ptr_clone(&tail_snapshot->next,&next); 
             while(false == is_offset_ptr_marked(cs_fifo_mpmc_config,&next)){
-                cs_fifo_mpmc_offset_ptr_change(&next,&entry->next);
+                cs_fifo_mpmc_offset_ptr_clone(&next,&entry->next);
                 if(cs_fifo_mpmc_offset_ptr_cas(&tail_snapshot->next,&next,&update) == true){
                     return true;
                 }
-                cs_fifo_mpmc_offset_ptr_change(&tail_snapshot->next,&next); 
+                cs_fifo_mpmc_offset_ptr_clone(&tail_snapshot->next,&next); 
             }
         }
         else{
@@ -397,18 +397,18 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
     struct ck_shm_fifo_mpmc_entry * next_snapshot, * head_snapshot, * tail_snapshot, *iterator_snapshot, * nn, * in;
 
     while(true){
-        cs_fifo_mpmc_offset_ptr_change(&fifo->head,&head);
+        cs_fifo_mpmc_offset_ptr_clone(&fifo->head,&head);
         ck_pr_fence_load();
-        cs_fifo_mpmc_offset_ptr_change(&fifo->tail,&tail);
+        cs_fifo_mpmc_offset_ptr_clone(&fifo->tail,&tail);
         ck_pr_fence_load();
         head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head);
-        cs_fifo_mpmc_offset_ptr_change(&head_snapshot->next,&next);
+        cs_fifo_mpmc_offset_ptr_clone(&head_snapshot->next,&next);
 
         tail_snapshot = cs_fifo_mpmc_offset_ptr_get(&tail);
 
         if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot){
 
-            cs_fifo_mpmc_offset_ptr_change(&head_snapshot->next,&next);
+            cs_fifo_mpmc_offset_ptr_clone(&head_snapshot->next,&next);
             ck_pr_fence_load();
             next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
             if (head_snapshot == tail_snapshot){
@@ -417,7 +417,7 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
                 ck_shm_fifo_mpmc_try_fix_fail(fifo, next_snapshot, tail_snapshot);
             }
             else{
-                cs_fifo_mpmc_offset_ptr_change(&head,&iterator);
+                cs_fifo_mpmc_offset_ptr_clone(&head,&iterator);
                 iterator_snapshot = head_snapshot;
                 int hops = 0;
                 while(is_offset_ptr_marked(cs_fifo_mpmc_config,&next) 
@@ -425,9 +425,9 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
                       && iterator_snapshot != tail_snapshot
                       && cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot
                      ){
-                         cs_fifo_mpmc_offset_ptr_change(&next,&iterator);
+                         cs_fifo_mpmc_offset_ptr_clone(&next,&iterator);
                          iterator_snapshot = cs_fifo_mpmc_offset_ptr_get(&iterator);
-                         cs_fifo_mpmc_offset_ptr_change(&iterator_snapshot->next,&next);
+                         cs_fifo_mpmc_offset_ptr_clone(&iterator_snapshot->next,&next);
                          next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
                          ++hops;
                      }
@@ -441,7 +441,7 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
                     nn = cs_fifo_mpmc_offset_ptr_get(&next);
                     *value= nn;
                     in = cs_fifo_mpmc_offset_ptr_get(&iterator);
-                    cs_fifo_mpmc_offset_ptr_change(&next,&new_next); 
+                    cs_fifo_mpmc_offset_ptr_clone(&next,&new_next); 
                     set_offset_ptr_marked(cs_fifo_mpmc_config,&new_next,true);
                     if(cs_fifo_mpmc_offset_ptr_cas(&in->next,&next,&new_next)){
                         if(hops >= MAX_HOPS)
@@ -464,18 +464,18 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
     iterator = CK_OFFSET_PTR_ENTRY_NULL, new_next = CK_OFFSET_PTR_ENTRY_NULL;
     struct ck_shm_fifo_mpmc_entry * next_snapshot, * head_snapshot, * tail_snapshot, *iterator_snapshot, * nn, * in;
 
-    cs_fifo_mpmc_offset_ptr_change(&fifo->head,&head);
+    cs_fifo_mpmc_offset_ptr_clone(&fifo->head,&head);
     ck_pr_fence_load();
-    cs_fifo_mpmc_offset_ptr_change(&fifo->tail,&tail);
+    cs_fifo_mpmc_offset_ptr_clone(&fifo->tail,&tail);
     ck_pr_fence_load();
     head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head);
-    cs_fifo_mpmc_offset_ptr_change(&head_snapshot->next,&next);
+    cs_fifo_mpmc_offset_ptr_clone(&head_snapshot->next,&next);
 
     tail_snapshot = cs_fifo_mpmc_offset_ptr_get(&tail);
 
     if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot){
 
-        cs_fifo_mpmc_offset_ptr_change(&head_snapshot->next,&next);
+        cs_fifo_mpmc_offset_ptr_clone(&head_snapshot->next,&next);
         ck_pr_fence_load();
         next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
         if (head_snapshot == tail_snapshot){
@@ -484,16 +484,16 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
             ck_shm_fifo_mpmc_try_fix_fail(fifo, next_snapshot, tail_snapshot);
         }
         else{
-            cs_fifo_mpmc_offset_ptr_change(&head,&iterator);
+            cs_fifo_mpmc_offset_ptr_clone(&head,&iterator);
             iterator_snapshot = head_snapshot;
             int hops = 0;
             while(is_offset_ptr_marked(cs_fifo_mpmc_config,&next) 
                   && iterator_snapshot != tail_snapshot
                   && cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot
                  ){
-                     cs_fifo_mpmc_offset_ptr_change(&next,&iterator);
+                     cs_fifo_mpmc_offset_ptr_clone(&next,&iterator);
                      iterator_snapshot = cs_fifo_mpmc_offset_ptr_get(&iterator);
-                     cs_fifo_mpmc_offset_ptr_change(&iterator_snapshot->next,&next);
+                     cs_fifo_mpmc_offset_ptr_clone(&iterator_snapshot->next,&next);
                      next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
                      ++hops;
                  }
@@ -506,7 +506,7 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
             else{
                 nn = cs_fifo_mpmc_offset_ptr_get(&next);
                 in = cs_fifo_mpmc_offset_ptr_get(&iterator);
-                cs_fifo_mpmc_offset_ptr_change(&next,&new_next); 
+                cs_fifo_mpmc_offset_ptr_clone(&next,&new_next); 
                 set_offset_ptr_marked(cs_fifo_mpmc_config,&new_next,true);
                 if(cs_fifo_mpmc_offset_ptr_cas(&in->next,&next,&new_next)){
                     *value= nn;
@@ -529,6 +529,24 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
 	for ((entry) = CK_SHM_FIFO_MPMC_FIRST(fifo);			\
 	     (entry) != NULL && ((T) = cs_fifo_mpmc_offset_ptr_get(&(entry)->next), 1);	\
 	     (entry) = (T))
+
+CK_CC_INLINE static size_t
+ck_shm_fifo_mpmc_count(struct ck_shm_fifo_mpmc *fifo)
+{
+    cs_fifo_mpmc_offset_ptr head = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL;
+    struct ck_shm_fifo_mpmc_entry * snapshot = CK_SHM_FIFO_MPMC_FIRST(fifo);
+    cs_fifo_mpmc_offset_ptr_clone(&cs_fifo_mpmc_offset_ptr_get(&fifo->head)->next, &next);
+    size_t count = 0;
+    while(snapshot != NULL){
+        if(false == is_offset_ptr_marked(cs_fifo_mpmc_config,&next)){
+             if (++count > INT_MAX)
+                break;
+        }
+        snapshot = cs_fifo_mpmc_offset_ptr_get(&snapshot->next);
+        cs_fifo_mpmc_offset_ptr_clone(&snapshot->next, &next);
+    }
+    return count;
+}
 
 #endif /* CK_F_SHM_FIFO_MPMC */
 #endif /* CK_F_PR_CAS_PTR_2 */

@@ -463,6 +463,21 @@ ck_error(const char *message, ...)
 	exit(EXIT_FAILURE);
 }
 
+CK_CC_UNUSED static void *
+common_malloc(size_t r)
+{
+	return malloc(r);
+}
+
+CK_CC_UNUSED static void
+common_free(void *p, size_t b, bool r)
+{
+	(void)b;
+	(void)r;
+	free(p);
+	return;
+}
+
 #define ck_test(A, B, ...) do {			\
 	if (A)					\
 		ck_error(B, ##__VA_ARGS__);	\

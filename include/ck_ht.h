@@ -250,7 +250,7 @@ ck_ht_entry_value_direct(ck_ht_entry_t *entry)
  * Iteration must occur without any concurrent mutations on
  * the hash table.
  */
-bool ck_ht_next(ck_ht_t *, ck_ht_iterator_t *, ck_ht_entry_t **entry);
+bool ck_ht_next(const ck_ht_t *, ck_ht_iterator_t *, ck_ht_entry_t **entry);
 
 void ck_ht_stat(ck_ht_t *, struct ck_ht_stat *);
 void ck_ht_hash(ck_ht_hash_t *, ck_ht_t *, const void *, uint16_t);
@@ -267,5 +267,21 @@ bool ck_ht_remove_spmc(ck_ht_t *, ck_ht_hash_t, ck_ht_entry_t *);
 bool ck_ht_reset_spmc(ck_ht_t *);
 bool ck_ht_reset_size_spmc(ck_ht_t *, CK_HT_TYPE);
 CK_HT_TYPE ck_ht_count(ck_ht_t *);
+
+void * 
+default_ht_malloc(size_t r);
+void 
+default_ht_free(void *p, size_t b, bool r);
+void 
+default_ht_hash_wrapper(struct ck_ht_hash *h,
+	const void *key,
+	size_t length,
+	uint64_t seed);
+
+CK_CC_INLINE static struct ck_malloc default_ck_ht_allocator = {
+	.malloc = default_ht_malloc,
+	.free = default_ht_free
+};
+
 
 #endif /* CK_HT_H */

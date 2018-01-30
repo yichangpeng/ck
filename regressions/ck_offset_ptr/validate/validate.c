@@ -13,7 +13,7 @@ struct ck_test;
 typedef struct ck_test ck_test_t;
 ck_offset_ptr(int_config,
               int_ptr,
-              change_from,
+              clone,
               get,
               set,
               cas,ck_test_t,
@@ -44,7 +44,7 @@ int main(void){
     pa = get(&a.next);
     printf("num=%d\r\n",((ck_test_t*)pa)->num);
 
-    change_from(&c.next,&a.next);
+    clone(&c.next,&a.next);
     pa = get(&a.next);
     printf("pa=%p\r\n",pa);
 

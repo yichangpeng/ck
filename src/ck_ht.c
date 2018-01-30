@@ -40,6 +40,7 @@
 #include <ck_stdint.h>
 #include <ck_stdbool.h>
 #include <ck_string.h>
+#include <malloc.h>
 
 #include "ck_ht_hash.h"
 #include "ck_internal.h"
@@ -609,7 +610,7 @@ ck_ht_count(struct ck_ht *table)
 }
 
 bool
-ck_ht_next(struct ck_ht *table,
+ck_ht_next(const struct ck_ht *table,
     struct ck_ht_iterator *i,
     struct ck_ht_entry **entry)
 {
@@ -1034,3 +1035,29 @@ ck_ht_destroy(struct ck_ht *table)
 	ck_ht_map_destroy(table->m, table->map, false);
 	return;
 }
+
+void *
+default_ht_malloc(size_t r)
+{
+	return malloc(r);
+}
+
+void
+default_ht_free(void *p, size_t b, bool r)
+{
+	(void)b;
+	(void)r;
+	free(p);
+	return;
+}
+
+void
+default_ht_hash_wrapper(struct ck_ht_hash *h,
+	const void *key,
+	size_t length,
+	uint64_t seed)
+{
+	h->value = (unsigned long)MurmurHash64A(key, length, seed);
+	return;
+}
+

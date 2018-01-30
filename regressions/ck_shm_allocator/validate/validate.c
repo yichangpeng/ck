@@ -48,7 +48,7 @@ struct Test{
 DEF_QUEUE_IMPL(Test_queue, Test)
 
 static void 
-test_stack(void){
+test_queue(void){
     const int len = 100 * 1024 * 1024;
     void * buf= malloc(len);
     shm_allocator_t * allocator = buf;
@@ -77,6 +77,6 @@ test_stack(void){
 
 int main(void){
     test_alloc_free();
-    test_stack();
+    test_queue();
     return 0;
 }
