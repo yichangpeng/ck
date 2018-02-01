@@ -11,8 +11,8 @@
 
 struct ck_test;
 typedef struct ck_test ck_test_t;
-ck_offset_ptr(int_config,
-              int_ptr,
+ck_offset_ptr(ck_test_t_config,
+              ck_test_t_ptr,
               clone,
               get,
               set,
@@ -22,7 +22,7 @@ ck_offset_ptr(int_config,
 
 struct ck_test{
     int num; 
-    int_ptr next;
+    ck_test_t_ptr next;
 };
 
 int main(void){
@@ -44,19 +44,25 @@ int main(void){
     pa = get(&a.next);
     printf("num=%d\r\n",((ck_test_t*)pa)->num);
 
+    void_ptr voidptr;
+    clone(&a.next,(ck_test_t_ptr*)&voidptr);
+    printf("voidnum=%d\r\n",((get((ck_test_t_ptr*)&voidptr)))->num);
+    void_ptr_set(&voidptr,&c,false,false);
+    printf("voidnum=%d\r\n",((struct ck_test*)(void_ptr_get(&voidptr)))->num);
+
     clone(&c.next,&a.next);
     pa = get(&a.next);
     printf("pa=%p\r\n",pa);
 
-    int_ptr offset_ptr_a = CK_OFFSET_PTR_ENTRY_NULL;
+    ck_test_t_ptr offset_ptr_a = CK_OFFSET_PTR_ENTRY_NULL;
     pa = get(&offset_ptr_a);
     printf("a=%d,&a=%p,pa=%p,&b=%p\r\n",a.num,(void*)&a,pa,(void*)&b);
 
-    int_ptr offset_ptr_b;
+    ck_test_t_ptr offset_ptr_b;
     set(&offset_ptr_b,NULL,false,false);
     pa = get(&offset_ptr_b);
     printf("111a=%d,&a=%p,pa=%p,&b=%p\r\n",a.num,(void*)&a,pa,(void*)&b);
-    printf("%s\r\n",is_offset_ptr_null(int_config,&offset_ptr_a)?"true":"false");
+    printf("%s\r\n",is_offset_ptr_null(ck_test_t_config,&offset_ptr_a)?"true":"false");
 
     offset_ptr_a.offset_data = 1;
     pa = get(&offset_ptr_a);

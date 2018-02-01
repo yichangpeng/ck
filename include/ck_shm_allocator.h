@@ -16,6 +16,7 @@
 #include <ck_shm_stack.h>
 #include <ck_queue.h>
 #include <ck_offset_ptr.h>
+#include <ck_shm_manager.h>
 
 CK_CC_INLINE static uint16_t 
 now_unit(void)
@@ -236,10 +237,8 @@ struct shm_allocator;
 typedef struct shm_allocator shm_allocator_t;
 struct delay_queue_impl;
 typedef struct delay_queue_impl delay_queue_impl_t;
-struct shm_large_alloc_impl;
-typedef struct shm_large_alloc_impl shm_large_alloc_impl_t;
-struct shm_manager;
-typedef struct shm_manager shm_manager_t;
+
+CK_OFFSET_DEFINE(shm_allocator_t)
 
 /*
 *
@@ -283,28 +282,11 @@ struct shm_small_alloc_impl
 
 struct shm_large_alloc_impl{
     shm_chunk_ptr       _current_chunk_ptr;
-    shm_allocator_t*    _allocator;
 };
-
-/*
-*
-* shm_manager:
-*           shm里面自定义数据结构声明
-*
-*
-*/
-
-struct shm_manager_info{
-    CK_SLIST_ENTRY(shm_manager_info) list_entry; 
-    void* _impl;
-    char  _name[1];
-};
-
-CK_SLIST_HEAD(shm_manager,shm_manager_info);
 
 ck_offset_ptr(small_config,
               sa_offset_ptr,
-              sa_offset_change,
+              sa_offset_clone,
               sa_offset_ptr_get,
               sa_offset_ptr_set,
               sa_offset_ptr_cas,
@@ -322,27 +304,22 @@ struct shm_allocator
 {
     uint16_t                _version;
     uint8_t                 _shm_type;
-    uint8_t                 _reserve[3];
+    uint8_t                 _reserve[5];
     size_t                  _buffer_length;
+    size_t                  _head_size;
     size_t                  _max_alloc_size;
     size_t                  _max_chunk_size;
+    shm_manager_t_ptr       _shm_manager;
     size_t                  _process_info;
+    shm_chunk_ptr           _current_chunk_ptr;
+    sa_offset_ptr           _small_alloc_impl_offset_ptr;   //创建shm后设置或者已存在加载shm时使用获得_small_alloc_impl
+    shm_small_alloc_impl_t* _small_alloc_impl;
     void*                   _custom_data_ptr;
     size_t                  _reserve_field[4];
-    size_t                  _head_size;
-    shm_large_alloc_impl_t  _large_alloc_impl;
-    shm_manager_t           _shm_manager;
-    sa_offset_ptr           _small_alloc_impl_offset_ptr;   //创建shm后设置或者已存在加载shm时使用获得_small_alloc_impl
-    shm_small_alloc_impl_t  *_small_alloc_impl;                                  
 };
 
 void *
-alloc_large(shm_large_alloc_impl_t * la, size_t n, size_t aligned_size, uint8_t add_chunk_flags);
-
-CK_CC_INLINE static void
-shm_large_alloc_impl_init(shm_large_alloc_impl_t * la, shm_allocator_t * allocator){
-    la->_allocator = allocator;    
-}
+alloc_large(shm_allocator_t * la, size_t n, size_t aligned_size, uint8_t add_chunk_flags);
 
 CK_CC_INLINE static bool 
 allow_aligned_size(size_t aligned_size)
@@ -496,7 +473,7 @@ alloc_and_add_to_list(shm_small_alloc_impl_t * sa, ck_shm_stack_t * s, size_t n)
     shm_allocator_t *allocator = sa->_allocator;
     size_t c = default_block_size / n;
     size_t size = n * c;
-    char * p = (char *) alloc_large(&allocator->_large_alloc_impl, size, 8, NEVER_FREE_BIT);
+    char * p = (char *) alloc_large(allocator, size, 8, NEVER_FREE_BIT);
     for (size_t i = n; i < size; i += n) {
         ck_shm_stack_entry_t * nd = (ck_shm_stack_entry_t *) (p + i);
         ck_shm_stack_push_mpmc(s,nd);
@@ -660,7 +637,7 @@ CK_CC_INLINE static void *
 alloc_ex(shm_allocator_t * a, size_t n)
 {
     if (n > max_alloc_size)
-        return alloc_large(&a->_large_alloc_impl, n, 8, 0);
+        return alloc_large(a, n, 8, 0);
     return alloc_small(a->_small_alloc_impl, n);
 }
 
@@ -682,7 +659,7 @@ CK_CC_INLINE static void *
 alloc_static(shm_allocator_t * a, size_t n)
 {
     if (n > max_alloc_size)
-        return alloc_large(&a->_large_alloc_impl, n, 8, NEVER_FREE_BIT);
+        return alloc_large(a, n, 8, NEVER_FREE_BIT);
     return alloc_small(a->_small_alloc_impl, n);
 }
 
@@ -691,81 +668,4 @@ dump_shm_allocator(shm_allocator_t * a);
 void
 check_shm_allocator(char * a, size_t length);
 
-typedef void (*create_op_parm1)(void *);
-typedef void (*create_op_parm2)(void *, size_t initialize_size);
-
-#define CREATE_IF_NOT_EXIST_SLIST                                   \
-    struct shm_manager_info * n = NULL, * prev = NULL;              \
-    shm_manager_t* list = &allocator->_shm_manager;                 \
-    CK_SLIST_FOREACH(n, list, list_entry){                          \
-        prev = n;                                                   \
-        if(!strcmp(n->_name,name))                                  \
-        {                                                           \
-            return n->_impl;                                        \
-        }                                                           \
-    }                                                               \
-    if(!create_if_not_exist)                                        \
-        return NULL;                                                \
-    const size_t name_len = strlen(name);                           \
-    const size_t len = sizeof(struct shm_manager_info) + name_len;  \
-    n = alloc_ex(allocator,len);                                    \
-    strcpy(n->_name,name);                                          \
-
-CK_CC_INLINE static void *
-get_container_parm1(shm_allocator_t * allocator, const char * name, bool create_if_not_exist, create_op_parm1 create_op)
-{
-    CREATE_IF_NOT_EXIST_SLIST
-    create_op(&n->_impl);
-
-    if(prev != NULL){
-        CK_SLIST_INSERT_AFTER(prev, n, list_entry);
-    }
-    else{
-        CK_SLIST_INSERT_HEAD(list, n, list_entry);
-    }
-    return &n->_impl;
-}
-
-CK_CC_INLINE static void *
-get_container_parm2(shm_allocator_t * allocator, const char * name, bool create_if_not_exist, size_t initialize_size, create_op_parm2 create_op)
-{
-    CREATE_IF_NOT_EXIST_SLIST
-    create_op(n,initialize_size);
-
-    CK_SLIST_INSERT_AFTER(prev, n, list_entry);
-    return &n->_impl;
-}
-
-static void                                                                            
-create_stack_container(void * container)                                               
-{                                                                                      
-    ck_shm_stack_init(container);                                                          
-}  
-
-CK_CC_INLINE static ck_shm_stack_t *
-get_stack(shm_allocator_t * allocator, const char * name, bool create_if_not_exist)
-{
-   return get_container_parm1(allocator,name,create_if_not_exist,create_stack_container); 
-}
-
-#define DEF_QUEUE_IMPL(liststructname,type)                         \
-        CK_STAILQ_HEAD(liststructname,type);                        \
-                                                                    \
-        static void                                                 \
-        create_queue_##type_container(void * container)             \
-        {                                                           \
-            struct liststructname *head =  (struct liststructname *)container;    \
-            head->stqh_first = NULL;                                \
-            head->stqh_last = &head->stqh_first;                    \
-        }                                                           \
-        
-#define GET_QUEUE(allocator, name, create_if_not_exist, type)       \
-        get_container_parm1(allocator,name,create_if_not_exist,create_queue_##type_container)
-
-
-#define GET_OBJECT_PARM1(allocator, name, create_if_not_exist) \
-        get_container_parm1(allocator,name,create_if_not_exist,create_stack_container);
-
-#define GET_OBJECT_PARM2(allocator, name, create_if_not_exist, initop) \
-        get_container_parm2(allocator,name,create_if_not_exist,create_stack_container,initop);
 #endif

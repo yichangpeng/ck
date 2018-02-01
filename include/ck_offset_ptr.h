@@ -134,5 +134,19 @@ cas_func##_##ptr(offset_ptr_type_name *old_offset_ptr, T *compare_ptr, T *new_pt
    \
    \
    \
-   
+
+#define CK_OFFSET_DEFINE(T) \
+        ck_offset_ptr(T##_config, \
+             T##_ptr, \
+             T##_ptr_clone, \
+             T##_ptr_get, \
+             T##_ptr_set, \
+             T##_ptr_cas,T, \
+             0,47) \
+
+
+CK_OFFSET_DEFINE(long)
+CK_OFFSET_DEFINE(int)
+CK_OFFSET_DEFINE(void)
+
 #endif

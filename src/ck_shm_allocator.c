@@ -9,11 +9,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <ck_shm_allocator.h>
 #include <ck_malloc.h>
 #include <ck_hs.h>
 #include <ck_ht.h>
 #include "ck_ht_hash.h"
+#include <ck_shm_allocator.h>
 
 inline static size_t 
 aligned_fill_count(size_t n, size_t aligned_size)
@@ -51,7 +51,7 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
     const int max_qsize = cpu_count * 25600;
     size_t n = sizeof(shm_small_alloc_impl_t) + sizeof(qnode_ptr) * max_qsize;
     /*ck_stack_pop_mpmc要求ck_shm_stack_t的地址必须是16字节的整数倍,*/
-    shm_small_alloc_impl_t * sa = alloc_large(&allocator->_large_alloc_impl, n, 16, NEVER_FREE_BIT);
+    shm_small_alloc_impl_t * sa = alloc_large(allocator, n, 16, NEVER_FREE_BIT);
     if(sa == NULL)
         return false;
 
@@ -72,9 +72,9 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
 }
 
 static bool 
-try_step_current_chunk_ptr(shm_large_alloc_impl_t * la, uint16_t now, shm_chunk_ptr* old, size_t offset)
+try_step_current_chunk_ptr(shm_allocator_t * la, uint16_t now, shm_chunk_ptr* old, size_t offset)
 {
-    shm_allocator_t *allocator = la->_allocator;
+    shm_allocator_t *allocator = la;
     const bool restart = offset >= (allocator->_buffer_length - SPACE_OFFSET);
     if(shm_chunk_ptr_cas(&la->_current_chunk_ptr, old, restart?allocator->_head_size:offset, restart)){
         shm_alloc_chunk_t * c = get_chunk(allocator,offset);
@@ -150,9 +150,9 @@ try_merge_after(shm_allocator_t * allocator, shm_alloc_chunk_t * c, uint16_t now
         size_t nh = (cd._chunk_head&INUSE_BITS)|(shm_alloc_chunk_getsize(&cd)+shm_alloc_chunk_getsize(&ncd));
         if(!shm_alloc_chunk_cas(c, &cd, nh, cd._chunk_expire_unit, cd._flags|MERGING_BIT))
         {
-            shm_chunk_ptr ptr = allocator->_large_alloc_impl._current_chunk_ptr; 
+            shm_chunk_ptr ptr = allocator->_current_chunk_ptr; 
             if(shm_chunk_ptr_offset(&ptr) == (size_t)((char*)nc - (char*)allocator))
-                try_step_current_chunk_ptr(&allocator->_large_alloc_impl, now, &ptr, shm_chunk_ptr_offset(&ptr)+shm_alloc_chunk_getsize(&ncd));
+                try_step_current_chunk_ptr(allocator, now, &ptr, shm_chunk_ptr_offset(&ptr)+shm_alloc_chunk_getsize(&ncd));
             return true;
         }
         else
@@ -167,9 +167,9 @@ try_merge_after(shm_allocator_t * allocator, shm_alloc_chunk_t * c, uint16_t now
 }
 
 void *
-alloc_large(shm_large_alloc_impl_t * la, size_t n, size_t aligned_size, uint8_t add_chunk_flags)
+alloc_large(shm_allocator_t * la, size_t n, size_t aligned_size, uint8_t add_chunk_flags)
 {
-    shm_allocator_t *allocator = la->_allocator;
+    shm_allocator_t *allocator = la;
     n = aligne_space(n + HEAD_SIZE);
     if (!allow_aligned_size(aligned_size))
         return NULL;
@@ -303,7 +303,7 @@ initialize_shm_allocator(shm_allocator_t *alloc, size_t length, size_t max_alloc
     shm_alloc_chunk_t * last_empty_chunk = get_last_chunk(alloc);
     last_empty_chunk->_chunk_head = CINUSE_BIT;
 
-    shm_chunk_ptr_set(&alloc->_large_alloc_impl._current_chunk_ptr, alloc->_head_size, 0, 0);
+    shm_chunk_ptr_set(&alloc->_current_chunk_ptr, alloc->_head_size, 0, 0);
 
     shm_alloc_chunk_t * c = get_first_chunk(alloc);
     c->_chunk_head = PINUSE_BIT;
@@ -311,7 +311,7 @@ initialize_shm_allocator(shm_allocator_t *alloc, size_t length, size_t max_alloc
     alloc->_max_chunk_size = MAX_SIZE;
     alloc->_max_alloc_size = alloc->_max_chunk_size/2;
 
-    c = get_chunk(alloc,shm_chunk_ptr_offset(&alloc->_large_alloc_impl._current_chunk_ptr));
+    c = get_chunk(alloc,shm_chunk_ptr_offset(&alloc->_current_chunk_ptr));
     size_t left_bytes = (char*)get_last_chunk(alloc) -(char*)c;
     const size_t max_size = alloc->_max_chunk_size - alloc->_max_alloc_size;
     bool is_beg = true;
@@ -330,8 +330,6 @@ initialize_shm_allocator(shm_allocator_t *alloc, size_t length, size_t max_alloc
     if(left_bytes > 0){
         c->_chunk_head = left_bytes | (is_beg?(c->_chunk_head&PINUSE_BIT):0);
     }
-    shm_large_alloc_impl_init(& alloc->_large_alloc_impl,alloc);
-
     return initialize_shm_small_alloc_impl(alloc,max_allocsize);
 }
 
@@ -365,8 +363,8 @@ dump_shm_allocator(shm_allocator_t * a)
    fprintf(stdout,"head: {buf: %p, buf_len: %lu, version: %u, shm-type: %s, head_size: %lu,\r\n \
                          _current_chunk_ptr: {%p,%u}, _custom_data_ptr: %p, now: %u}\r\n",
           (void*)a,a->_buffer_length,a->_version,s,a->_head_size,
-          (void*)get_chunk(a,shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr)),
-           a->_large_alloc_impl._current_chunk_ptr._ver_,a->_custom_data_ptr,now_unit());
+          (void*)get_chunk(a,shm_chunk_ptr_offset(&a->_current_chunk_ptr)),
+           a->_current_chunk_ptr._ver_,a->_custom_data_ptr,now_unit());
 
    shm_alloc_chunk_t * c = get_first_chunk(a); 
    shm_alloc_chunk_t * last = get_last_chunk(a); 
@@ -504,8 +502,8 @@ check_shm_allocator(char * base, size_t length)
     shm_assert(a->_head_size < a->_buffer_length);
     //shm_assert(a->_max_chunk_size < a->_buffer_length);
     shm_assert(a->_max_alloc_size <= a->_max_chunk_size);
-    shm_assert(shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr) <= a->_buffer_length);
-    shm_assert(shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr) >= a->_head_size);
+    shm_assert(shm_chunk_ptr_offset(&a->_current_chunk_ptr) <= a->_buffer_length);
+    shm_assert(shm_chunk_ptr_offset(&a->_current_chunk_ptr) >= a->_head_size);
 
     shm_alloc_chunk_t *c = get_first_chunk(a);
     shm_alloc_chunk_t * e = get_last_chunk(a); 
@@ -553,7 +551,7 @@ check_shm_allocator(char * base, size_t length)
     shm_assert(ck_hs_count(&never_free_chunks) > 0);
     shm_assert(c == e);
 
-    size_t x = shm_chunk_ptr_offset(&a->_large_alloc_impl._current_chunk_ptr);
+    size_t x = shm_chunk_ptr_offset(&a->_current_chunk_ptr);
     //TODO:查找包含x的个数
     //shm_assert(ck_ht_count(&ptr2head) != 0);
     (void)x;
@@ -591,3 +589,82 @@ check_shm_allocator(char * base, size_t length)
        p = p ->next;
     }
 }
+
+void *
+get_container_parm1(struct shm_allocator * allocator, const char * name, bool create_if_not_exist, create_op_parm1 create_op)
+{
+    shm_manager_t * slist = shm_manager_t_ptr_get(&allocator->_shm_manager);
+    struct shm_manager_info * n = NULL;
+    const size_t name_len = strlen(name);
+    const size_t len = sizeof(struct shm_manager_info) + name_len;
+    n = alloc_ex(allocator, len);
+    if (n == NULL){
+        fprintf(stderr, "shm_manager alloc_ex failed, field: %s, len: %zu\r\n", name, len);
+        return NULL; 
+    }
+    strcpy(n->_name, name);
+
+    for (; ;) {
+        struct shm_slist_pair pair = ck_shm_slist_search_if(&slist->slh_first, shm_manager_op, name, false);
+        if (!create_if_not_exist){
+            fprintf(stderr, "shm_manager field %s not exists but create_if_not_exist is false\r\n", name);
+            if (n){
+                free_ex(allocator, n, len, false);
+            }
+            return NULL; 
+        }
+
+        if (ck_shm_slist_insert_middle(pair.first, pair.second, &n->_list_entry))
+        {
+            create_op(allocator, &n->_impl);
+            return void_ptr_get(&n->_impl);
+        }
+    }
+}
+
+void *
+get_container_parm2(struct shm_allocator * allocator, const char * name, bool create_if_not_exist, size_t initialize_size, create_op_parm2 create_op)
+{
+    shm_manager_t * slist = shm_manager_t_ptr_get(&allocator->_shm_manager);
+    struct shm_manager_info * n = NULL;
+    const size_t name_len = strlen(name);
+    const size_t len = sizeof(struct shm_manager_info) + name_len;
+    n = alloc_ex(allocator, len);
+    if (n == NULL){
+        fprintf(stderr, "shm_manager alloc_ex failed, field: %s, len: %zu\r\n", name, len);
+        return NULL; 
+    }
+    strcpy(n->_name, name);
+
+    for (; ;) {
+        struct shm_slist_pair pair = ck_shm_slist_search_if(&slist->slh_first, shm_manager_op, name, false);
+        if (!create_if_not_exist){
+            fprintf(stderr, "shm_manager field %s not exists but create_if_not_exist is false\r\n", name);
+            if (n){
+                free_ex(allocator, n, len, false);
+            }
+            return NULL; 
+        }
+
+        if (ck_shm_slist_insert_middle(pair.first, pair.second, &n->_list_entry))
+        {
+            create_op(allocator, &n->_impl, initialize_size);
+            return void_ptr_get(&n->_impl);
+        }
+    }
+}
+
+void                                                                            
+create_stack_container(struct shm_allocator * allocator, void_ptr * container)                                               
+{                                                                                      
+    ck_shm_stack_t * stack = alloc_static(allocator, sizeof(ck_shm_stack_t));
+    ck_shm_stack_init(stack);                                                          
+    void_ptr_set(container, stack, false, false);
+}  
+
+ck_shm_stack_t *
+get_stack(struct shm_allocator * allocator, const char * name, bool create_if_not_exist)
+{
+   return get_container_parm1(allocator,name,create_if_not_exist,create_stack_container); 
+}
+

@@ -43,7 +43,7 @@ typedef struct ck_shm_fifo_spsc_entry ck_shm_fifo_spsc_entry_t;
 
 ck_offset_ptr(cs_fifo_spsc_config,
               cs_fifo_spsc_offset_ptr,
-              cs_fifo_spsc_offset_ptr_change,
+              cs_fifo_spsc_offset_ptr_clone,
               cs_fifo_spsc_offset_ptr_get,
               cs_fifo_spsc_offset_ptr_set,
               cs_fifo_spsc_offset_ptr_cas,
@@ -53,7 +53,7 @@ ck_offset_ptr(cs_fifo_spsc_config,
 
 struct ck_shm_fifo_spsc_entry {
     cs_fifo_spsc_offset_ptr next;
-    void * value;
+    void_ptr value;
 };
 
 
@@ -144,7 +144,7 @@ ck_shm_fifo_spsc_enqueue(struct ck_shm_fifo_spsc *fifo,
 		     struct ck_shm_fifo_spsc_entry *entry,
              void *value)
 {
-    entry->value = value;
+    void_ptr_set(&entry->value,value,false,false);
 	cs_fifo_spsc_offset_ptr_set(&entry->next,NULL,false,false);
 
 	/* If stub->next is visible, guarantee that entry is consistent. */
@@ -171,7 +171,7 @@ ck_shm_fifo_spsc_dequeue(struct ck_shm_fifo_spsc *fifo, void *value)
 		return false;
 
 	/* If entry is visible, guarantee store to value is visible. */
-    ck_pr_store_ptr_unsafe(value, entry->value);
+    ck_pr_store_ptr_unsafe(value, void_ptr_get(&entry->value));
 	ck_pr_fence_store();
     cs_fifo_spsc_offset_ptr_set(&fifo->head,entry,false,false);
 	return true;
@@ -187,14 +187,14 @@ ck_shm_fifo_spsc_recycle(struct ck_shm_fifo_spsc *fifo)
 	struct ck_shm_fifo_spsc_entry *garbage;
 
 	if (cs_fifo_spsc_offset_ptr_get(&fifo->head_snapshot) == cs_fifo_spsc_offset_ptr_get(&fifo->garbage)) {
-        cs_fifo_spsc_offset_ptr_change(&fifo->head,&fifo->head_snapshot);
+        cs_fifo_spsc_offset_ptr_clone(&fifo->head,&fifo->head_snapshot);
 	    if (cs_fifo_spsc_offset_ptr_get(&fifo->head_snapshot) == cs_fifo_spsc_offset_ptr_get(&fifo->garbage)) {
 			return NULL;
 	    }
     }
 
 	garbage = cs_fifo_spsc_offset_ptr_get(&fifo->garbage);
-    cs_fifo_spsc_offset_ptr_change(&garbage->next,&fifo->garbage);
+    cs_fifo_spsc_offset_ptr_clone(&garbage->next,&fifo->garbage);
 	return garbage;
 }
 

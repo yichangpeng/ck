@@ -38,7 +38,7 @@ typedef struct ck_shm_stack_entry ck_shm_stack_entry_t;
 
 ck_offset_ptr(cs_stack_config,
               cs_stack_offset_ptr,
-              cs_stack_offset_ptr_change,
+              cs_stack_offset_ptr_clone,
               cs_stack_offset_ptr_get,
               cs_stack_offset_ptr_set,
               cs_stack_offset_ptr_cas,
@@ -68,11 +68,11 @@ ck_shm_stack_trypush_upmc(struct ck_shm_stack *target, struct ck_shm_stack_entry
 {
     cs_stack_offset_ptr_set(&entry->next,NULL,false,false);
 	cs_stack_offset_ptr stack;
-    cs_stack_offset_ptr_change(&target->head_ptr,&stack);
+    cs_stack_offset_ptr_clone(&target->head_ptr,&stack);
 
 	ck_pr_fence_store();
 
-    cs_stack_offset_ptr_change(&stack,&entry->next);
+    cs_stack_offset_ptr_clone(&stack,&entry->next);
 
 	cs_stack_offset_ptr temp;
     cs_stack_offset_ptr_set(&temp,entry,false,false);
@@ -94,7 +94,7 @@ CK_CC_INLINE static bool
 ck_shm_stack_trypop_upmc(struct ck_shm_stack *target, struct ck_shm_stack_entry **r)
 {
 	cs_stack_offset_ptr stack;
-    cs_stack_offset_ptr_change(&target->head_ptr,&stack);
+    cs_stack_offset_ptr_clone(&target->head_ptr,&stack);
 
     struct ck_shm_stack_entry * next = cs_stack_offset_ptr_get(&stack); 
     if(next == NULL)
@@ -137,20 +137,20 @@ ck_shm_stack_push_mpmc(struct ck_shm_stack *target, struct ck_shm_stack_entry *e
 {
     cs_stack_offset_ptr_set(&entry->next,NULL,false,false);
     cs_stack_offset_ptr stack;
-    cs_stack_offset_ptr_change(&target->head_ptr,&stack);
+    cs_stack_offset_ptr_clone(&target->head_ptr,&stack);
 
     ck_pr_fence_store();
 
-    cs_stack_offset_ptr_change(&stack,&entry->next);
+    cs_stack_offset_ptr_clone(&stack,&entry->next);
 
     cs_stack_offset_ptr temp;
     cs_stack_offset_ptr_set(&temp,entry,false,false);
 
     while (cs_stack_offset_ptr_cas(&target->head_ptr, &stack, &temp) == false) 
     {
-        cs_stack_offset_ptr_change(&target->head_ptr,&stack);
+        cs_stack_offset_ptr_clone(&target->head_ptr,&stack);
         ck_pr_fence_store();
-        cs_stack_offset_ptr_change(&stack,&entry->next);
+        cs_stack_offset_ptr_clone(&stack,&entry->next);
     }
 
     return;
@@ -180,7 +180,7 @@ CK_CC_INLINE static struct ck_shm_stack_entry *
 ck_shm_stack_pop_mpmc(struct ck_shm_stack *target)
 {
 	cs_stack_offset_ptr stack;
-    cs_stack_offset_ptr_change(&target->head_ptr,&stack);
+    cs_stack_offset_ptr_clone(&target->head_ptr,&stack);
 
     struct ck_shm_stack_entry * next = cs_stack_offset_ptr_get(&stack); 
     if(next == NULL)
@@ -189,7 +189,7 @@ ck_shm_stack_pop_mpmc(struct ck_shm_stack *target)
 	ck_pr_fence_store();
 
 	while (cs_stack_offset_ptr_cas(&target->head_ptr, &stack, &next->next) == false) {
-        cs_stack_offset_ptr_change(&target->head_ptr,&stack);
+        cs_stack_offset_ptr_clone(&target->head_ptr,&stack);
 		ck_pr_fence_store();
         next = cs_stack_offset_ptr_get(&stack); 
         if(next == NULL)
@@ -230,7 +230,7 @@ CK_CC_INLINE static void
 ck_shm_stack_push_spnc(struct ck_shm_stack *target, struct ck_shm_stack_entry *entry)
 {
 
-    cs_stack_offset_ptr_change(&target->head_ptr,&entry->next);
+    cs_stack_offset_ptr_clone(&target->head_ptr,&entry->next);
     cs_stack_offset_ptr_set(&target->head_ptr,entry,false,false); 
 	return;
 }
@@ -247,7 +247,7 @@ ck_shm_stack_pop_npsc(struct ck_shm_stack *target)
 	if (n == NULL)
 		return NULL;
 
-    cs_stack_offset_ptr_change(&n->next,&target->head_ptr);
+    cs_stack_offset_ptr_clone(&n->next,&target->head_ptr);
 
 	return n;
 }
