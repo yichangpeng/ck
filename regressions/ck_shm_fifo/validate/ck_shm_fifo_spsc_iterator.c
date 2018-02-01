@@ -30,6 +30,7 @@
 #include <stdio.h>
 
 struct example {
+    ck_shm_fifo_spsc_entry_t entry;
 	int x;
 };
 
@@ -40,17 +41,13 @@ main(void)
 {
 	int i, length = 3;
 	struct example *examples;
-	ck_shm_fifo_spsc_entry_t *stub, *entries, *entry, *next;
+	ck_shm_fifo_spsc_entry_t *stub, *entry, *next;
 
 	stub = malloc(sizeof(ck_shm_fifo_spsc_entry_t));
 	if (stub == NULL)
 		exit(EXIT_FAILURE);
 
 	ck_shm_fifo_spsc_init(&spsc_fifo, stub);
-
-	entries = malloc(sizeof(ck_shm_fifo_spsc_entry_t) * length);
-	if (entries == NULL)
-		exit(EXIT_FAILURE);
 
 	examples = malloc(sizeof(struct example) * length);
 	/* Need these for this unit test. */
@@ -59,23 +56,22 @@ main(void)
 
 	for (i = 0; i < length; ++i) {
 		examples[i].x = i;
-		ck_shm_fifo_spsc_enqueue(&spsc_fifo, entries + i, examples + i);
+		ck_shm_fifo_spsc_enqueue(&spsc_fifo, (ck_shm_fifo_spsc_entry_t*)(examples + i));
 	}
 
 	puts("TESTING CK_SHM_FIFO_SPSC_FOREACH.");
 	CK_SHM_FIFO_SPSC_FOREACH(&spsc_fifo, entry) {
-		printf("Next value in fifo: %d\n", (((struct example *)(entry->value))->x));
+		printf("Next value in fifo: %d\n", (((struct example *)(entry))->x));
 	}
 
 	puts("Testing CK_SHM_FIFO_SPSC_FOREACH_SAFE.");
 	CK_SHM_FIFO_SPSC_FOREACH_SAFE(&spsc_fifo, entry, next) {
 		if (cs_fifo_spsc_offset_ptr_get(&entry->next) != next)
 			exit(EXIT_FAILURE);
-		printf("Next value in fifo: %d\n", (((struct example *)(entry->value))->x));
+		printf("Next value in fifo: %d\n", (((struct example *)(entry))->x));
 	}
 
 	free(examples);
-	free(entries);
 	free(stub);
 
 	return (0);

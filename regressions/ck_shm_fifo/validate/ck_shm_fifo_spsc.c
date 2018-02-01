@@ -44,6 +44,7 @@ struct context {
 };
 
 struct entry {
+    ck_shm_fifo_spsc_entry_t fifo_entry;
 	int tid;
 	int value;
 };
@@ -59,7 +60,6 @@ test(void *c)
 {
 	struct context *context = c;
 	struct entry *entry;
-	ck_shm_fifo_spsc_entry_t *fifo_entry;
 	int i, j;
 
         if (aff_iterate(&a)) {
@@ -81,8 +81,7 @@ test(void *c)
 			entries[i].value = i;
 			entries[i].tid = 0;
 
-			fifo_entry = malloc(sizeof(ck_shm_fifo_spsc_entry_t));
-			ck_shm_fifo_spsc_enqueue(fifo + context->tid, fifo_entry, entries + i);
+			ck_shm_fifo_spsc_enqueue(fifo + context->tid, &((entries + i)->fifo_entry));
 		}
 	}
 
@@ -91,7 +90,7 @@ test(void *c)
 
 	for (i = 0; i < ITERATIONS; i++) {
 		for (j = 0; j < size; j++) {
-			while (ck_shm_fifo_spsc_dequeue(fifo + context->previous, &entry) == false);
+			while (ck_shm_fifo_spsc_dequeue(fifo + context->previous, (struct ck_shm_fifo_spsc_entry**)&entry) == false);
 			if (context->previous != (unsigned int)entry->tid) {
 				ck_error("T [%u:%p] %u != %u\n",
 					context->tid, (void *)entry, entry->tid, context->previous);
@@ -103,11 +102,11 @@ test(void *c)
 			}
 
 			entry->tid = context->tid;
-			fifo_entry = ck_shm_fifo_spsc_recycle(fifo + context->tid);
+			struct ck_shm_fifo_spsc_entry *fifo_entry = ck_shm_fifo_spsc_recycle(fifo + context->tid);
 			if (fifo_entry == NULL)
 				fifo_entry = malloc(sizeof(ck_shm_fifo_spsc_entry_t));
 
-			ck_shm_fifo_spsc_enqueue(fifo + context->tid, fifo_entry, entry);
+			ck_shm_fifo_spsc_enqueue(fifo + context->tid, &(entry->fifo_entry));
 		}
 	}
 

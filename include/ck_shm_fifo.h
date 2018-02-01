@@ -53,7 +53,6 @@ ck_offset_ptr(cs_fifo_spsc_config,
 
 struct ck_shm_fifo_spsc_entry {
     cs_fifo_spsc_offset_ptr next;
-    void_ptr value;
 };
 
 
@@ -141,10 +140,8 @@ ck_shm_fifo_spsc_deinit(struct ck_shm_fifo_spsc *fifo, struct ck_shm_fifo_spsc_e
 
 CK_CC_INLINE static void
 ck_shm_fifo_spsc_enqueue(struct ck_shm_fifo_spsc *fifo,
-		     struct ck_shm_fifo_spsc_entry *entry,
-             void *value)
+		     struct ck_shm_fifo_spsc_entry *entry)
 {
-    void_ptr_set(&entry->value,value,false,false);
 	cs_fifo_spsc_offset_ptr_set(&entry->next,NULL,false,false);
 
 	/* If stub->next is visible, guarantee that entry is consistent. */
@@ -156,7 +153,7 @@ ck_shm_fifo_spsc_enqueue(struct ck_shm_fifo_spsc *fifo,
 }
 
 CK_CC_INLINE static bool
-ck_shm_fifo_spsc_dequeue(struct ck_shm_fifo_spsc *fifo, void *value)
+ck_shm_fifo_spsc_dequeue(struct ck_shm_fifo_spsc *fifo, struct ck_shm_fifo_spsc_entry **value)
 {
 	struct ck_shm_fifo_spsc_entry *entry;
 
@@ -170,8 +167,8 @@ ck_shm_fifo_spsc_dequeue(struct ck_shm_fifo_spsc *fifo, void *value)
 	if (entry == NULL)
 		return false;
 
-	/* If entry is visible, guarantee store to value is visible. */
-    ck_pr_store_ptr_unsafe(value, void_ptr_get(&entry->value));
+    *value = entry; 
+
 	ck_pr_fence_store();
     cs_fifo_spsc_offset_ptr_set(&fifo->head,entry,false,false);
 	return true;
@@ -533,7 +530,7 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
 CK_CC_INLINE static size_t
 ck_shm_fifo_mpmc_count(struct ck_shm_fifo_mpmc *fifo)
 {
-    cs_fifo_mpmc_offset_ptr head = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL;
+    cs_fifo_mpmc_offset_ptr next = CK_OFFSET_PTR_ENTRY_NULL;
     struct ck_shm_fifo_mpmc_entry * snapshot = CK_SHM_FIFO_MPMC_FIRST(fifo);
     cs_fifo_mpmc_offset_ptr_clone(&cs_fifo_mpmc_offset_ptr_get(&fifo->head)->next, &next);
     size_t count = 0;
