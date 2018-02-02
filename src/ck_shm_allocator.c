@@ -199,7 +199,7 @@ alloc_large(shm_allocator_t * la, size_t n, size_t aligned_size, uint8_t add_chu
                     // 两个chunk合并后，后者的chunk的结构体信息大小空间回收，是sizeof(shm_alloc_chunk)，而不是后者永久块的内容 
                     if (ptr._data_ != la->_current_chunk_ptr._data_)
                     {
-                        add_to_bins_and_fetch_total(allocator->_small_alloc_impl,nc,sizeof(shm_alloc_chunk_t));
+                        add_to_bins_and_fetch_total(allocator,allocator->_small_alloc_impl,nc,sizeof(shm_alloc_chunk_t));
                     }
                     else{
                         // 避免两个相邻的chunk同时被删的情况可能有问题
@@ -218,7 +218,7 @@ alloc_large(shm_allocator_t * la, size_t n, size_t aligned_size, uint8_t add_chu
                     if(shm_alloc_chunk_cas(nc, &ncd, ncd._chunk_head|CINUSE_BIT, 0, 0)){
                         for(; ;){
                             if(shm_alloc_chunk_cas(c, &cd, (cs+ncs+shm_alloc_chunk_getsize(nnc)) | (cd._chunk_head & INUSE_BITS), 0, cd._flags)){
-                                add_to_bins_and_fetch_total(allocator->_small_alloc_impl,nc,ncs+sizeof(shm_alloc_chunk_t));
+                                add_to_bins_and_fetch_total(allocator,allocator->_small_alloc_impl,nc,ncs+sizeof(shm_alloc_chunk_t));
                                 break;
                             }
                             cd = *c;

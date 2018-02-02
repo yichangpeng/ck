@@ -265,7 +265,6 @@ struct delay_queue_impl{
 */
 struct shm_small_alloc_impl
 {
-    shm_allocator_t*    _allocator;
     delay_queue_impl_t  _delay_q;
     int                 _small_bin_total[small_bin_count];
     char                _reserve[8];    //保留位,保证_small_bin数组起始地址是16的整数倍
@@ -357,10 +356,11 @@ delay_queue_impl_check_fp(delay_queue_impl_t * delay_queue)
     }
 }
 
-typedef void (*Callback)(shm_small_alloc_impl_t *, qnode_ptr *);
+typedef void (*Callback)(shm_allocator_t *allocator, shm_small_alloc_impl_t *, qnode_ptr *);
 
 CK_CC_INLINE static void
-delay_queue_impl_push(shm_small_alloc_impl_t * sa, delay_queue_impl_t * delay_queue, const char * base, char * p, size_t n, uint16_t expire_unit, Callback cb)
+delay_queue_impl_push(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, delay_queue_impl_t * delay_queue, 
+    const char * base, char * p, size_t n, uint16_t expire_unit, Callback cb)
 {
     qnode_ptr qp;
     qnode_ptr_set(&qp,p-base,n,expire_unit);
@@ -379,7 +379,7 @@ delay_queue_impl_push(shm_small_alloc_impl_t * sa, delay_queue_impl_t * delay_qu
             uint32_t new_h = h.n1 + 1;
             qnode_ptr pp = delay_queue->_v[h.n1 % delay_queue->_max_size];
             if(ck_pr_cas_32(&delay_queue->_head, h.n1, new_h)){
-                cb(sa,&pp);
+                cb(allocator,sa,&pp);
             }
             continue;
         }
@@ -441,9 +441,8 @@ bool
 initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsize);
 
 CK_CC_INLINE static int 
-try_free_delay_q(shm_small_alloc_impl_t * sa)
+try_free_delay_q(shm_small_alloc_impl_t * sa, shm_allocator_t *allocator)
 {
-    shm_allocator_t *allocator = sa->_allocator;
     char * base = get_buffer(allocator);
     uint16_t now = now_unit();
     int count = 0;
@@ -459,18 +458,17 @@ try_free_delay_q(shm_small_alloc_impl_t * sa)
 }
 
 CK_CC_INLINE static ck_shm_stack_entry_t * 
-alloc_from_list_inner(shm_small_alloc_impl_t * sa, ck_shm_stack_t * s)
+alloc_from_list_inner(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, ck_shm_stack_t * s)
 {
     ck_shm_stack_entry_t * nd = ck_shm_stack_pop_mpmc(s);
-    if (nd == NULL && try_free_delay_q(sa) > 0)
+    if (nd == NULL && try_free_delay_q(sa, allocator) > 0)
         nd = ck_shm_stack_pop_mpmc(s);
     return nd;
 }
 
 CK_CC_INLINE static void * 
-alloc_and_add_to_list(shm_small_alloc_impl_t * sa, ck_shm_stack_t * s, size_t n)
+alloc_and_add_to_list(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, ck_shm_stack_t * s, size_t n)
 {
-    shm_allocator_t *allocator = sa->_allocator;
     size_t c = default_block_size / n;
     size_t size = n * c;
     char * p = (char *) alloc_large(allocator, size, 8, NEVER_FREE_BIT);
@@ -483,15 +481,15 @@ alloc_and_add_to_list(shm_small_alloc_impl_t * sa, ck_shm_stack_t * s, size_t n)
 }
 
 CK_CC_INLINE static ck_shm_stack_entry_t * 
-alloc_from_list(shm_small_alloc_impl_t * sa, size_t n)
+alloc_from_list(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, size_t n)
 {
     ck_shm_stack_t * s = gs(sa,n);
-    ck_shm_stack_entry_t * nd = alloc_from_list_inner(sa, s);
+    ck_shm_stack_entry_t * nd = alloc_from_list_inner(allocator, sa, s);
     if (nd != NULL)
         return nd;
     //TODO:待优化
     if (n <= 64) {
-        nd = alloc_from_list(sa, n * 2);
+        nd = alloc_from_list(allocator, sa, n * 2);
         if (nd != NULL) {
             ck_shm_stack_entry_t * nd2 = (ck_shm_stack_entry_t *)(((char *) nd) + n);
             ck_shm_stack_push_mpmc(s,nd2);
@@ -529,21 +527,20 @@ shm_small_alloc_impl_init(shm_allocator_t * allocator){
 }
 
 CK_CC_INLINE static void*
-alloc_small(shm_small_alloc_impl_t * sa, size_t n)
+alloc_small(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, size_t n)
 {
     n = aligne_space(n);
     assert(n <= max_alloc_size);
-    ck_shm_stack_entry_t* nd = alloc_from_list(sa, n);
+    ck_shm_stack_entry_t* nd = alloc_from_list(allocator, sa, n);
     if (nd)
         return nd;
     ck_shm_stack_t * s = gs(sa,n);
-    return alloc_and_add_to_list(sa, s, n);
+    return alloc_and_add_to_list(allocator, sa, s, n);
 }
 
 CK_CC_INLINE static void
-push_callback(shm_small_alloc_impl_t * sa, qnode_ptr * i)
+push_callback(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, qnode_ptr * i)
 {
-    shm_allocator_t * allocator = sa->_allocator;
     char * base = get_buffer(allocator);
     ck_shm_stack_t * s = gs(sa,qnode_ptr_get_size(i));
     ck_shm_stack_entry_t * nd = qnode_ptr_get_ptr(i,base);
@@ -551,14 +548,13 @@ push_callback(shm_small_alloc_impl_t * sa, qnode_ptr * i)
 }
 
 CK_CC_INLINE static void
-free_small(shm_small_alloc_impl_t * sa, void * p, size_t n, bool delay)
+free_small(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, void * p, size_t n, bool delay)
 {
-    shm_allocator_t * allocator = sa->_allocator;
     n = aligne_space(n);
     assert(n <= max_alloc_size);
     if (delay) {
         char * base = get_buffer(allocator);
-        delay_queue_impl_push(sa, &sa->_delay_q, base, (char *) p, n, now_unit() + DEFAULT_DELAY_UNIT, push_callback);
+        delay_queue_impl_push(allocator, sa, &sa->_delay_q, base, (char *) p, n, now_unit() + DEFAULT_DELAY_UNIT, push_callback);
     } else {
         ck_shm_stack_t * s = gs(sa,n);
         ck_shm_stack_push_mpmc(s,p);
@@ -566,13 +562,12 @@ free_small(shm_small_alloc_impl_t * sa, void * p, size_t n, bool delay)
 }
 
 CK_CC_INLINE static void
-add_to_bins_and_fetch_total(shm_small_alloc_impl_t * sa, void * p, size_t n)
+add_to_bins_and_fetch_total(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, void * p, size_t n)
 {
-    shm_allocator_t * allocator = sa->_allocator;
     n = aligne_space(n);
     ck_pr_faa_int(&sa->_small_bin_total[gs(sa,n * 2) - sa->_small_bin], 1);
     char * base = get_buffer(allocator);
-    delay_queue_impl_push(sa, &sa->_delay_q, base, (char *) p, n, now_unit() + DEFAULT_DELAY_UNIT, push_callback);
+    delay_queue_impl_push(allocator, sa, &sa->_delay_q, base, (char *) p, n, now_unit() + DEFAULT_DELAY_UNIT, push_callback);
 }
 
 CK_CC_INLINE static shm_alloc_chunk_t * 
@@ -638,7 +633,7 @@ alloc_ex(shm_allocator_t * a, size_t n)
 {
     if (n > max_alloc_size)
         return alloc_large(a, n, 8, 0);
-    return alloc_small(a->_small_alloc_impl, n);
+    return alloc_small(a, a->_small_alloc_impl, n);
 }
 
 CK_CC_INLINE static void 
@@ -646,7 +641,7 @@ free_ex(shm_allocator_t * a, void * p, size_t n, bool delay)
 {
     if (p != NULL) {
         if (n <= max_alloc_size) {
-            free_small(a->_small_alloc_impl, p, n, delay);
+            free_small(a, a->_small_alloc_impl, p, n, delay);
         } else if (delay) {
             delay_free_large(get_chunk_by_ptr(p));
         } else {
@@ -660,7 +655,7 @@ alloc_static(shm_allocator_t * a, size_t n)
 {
     if (n > max_alloc_size)
         return alloc_large(a, n, 8, NEVER_FREE_BIT);
-    return alloc_small(a->_small_alloc_impl, n);
+    return alloc_small(a, a->_small_alloc_impl, n);
 }
 
 void
