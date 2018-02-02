@@ -57,7 +57,6 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
 
     memset(sa->_small_bin_total,0,sizeof(sa->_small_bin_total));
     sa_offset_ptr_set(&allocator->_small_alloc_impl_offset_ptr,sa,false,false);
-    shm_small_alloc_impl_init(&allocator);
 
     for(size_t i = 0; i < sizeof(sa->_small_bin)/sizeof(sa->_small_bin[0]); ++i)
     {
@@ -199,7 +198,7 @@ alloc_large(shm_allocator_t * la, size_t n, size_t aligned_size, uint8_t add_chu
                     // 两个chunk合并后，后者的chunk的结构体信息大小空间回收，是sizeof(shm_alloc_chunk)，而不是后者永久块的内容 
                     if (ptr._data_ != la->_current_chunk_ptr._data_)
                     {
-                        add_to_bins_and_fetch_total(allocator,allocator->_small_alloc_impl,nc,sizeof(shm_alloc_chunk_t));
+                        add_to_bins_and_fetch_total(allocator,shm_small_alloc_impl_get(allocator),nc,sizeof(shm_alloc_chunk_t));
                     }
                     else{
                         // 避免两个相邻的chunk同时被删的情况可能有问题
@@ -218,7 +217,7 @@ alloc_large(shm_allocator_t * la, size_t n, size_t aligned_size, uint8_t add_chu
                     if(shm_alloc_chunk_cas(nc, &ncd, ncd._chunk_head|CINUSE_BIT, 0, 0)){
                         for(; ;){
                             if(shm_alloc_chunk_cas(c, &cd, (cs+ncs+shm_alloc_chunk_getsize(nnc)) | (cd._chunk_head & INUSE_BITS), 0, cd._flags)){
-                                add_to_bins_and_fetch_total(allocator,allocator->_small_alloc_impl,nc,ncs+sizeof(shm_alloc_chunk_t));
+                                add_to_bins_and_fetch_total(allocator,shm_small_alloc_impl_get(allocator),nc,ncs+sizeof(shm_alloc_chunk_t));
                                 break;
                             }
                             cd = *c;
@@ -296,7 +295,7 @@ initialize_shm_allocator(shm_allocator_t *alloc, size_t length, size_t max_alloc
     alloc->_version = 1000;
     alloc->_shm_type = SHM_TYPE_UNKNOWN;
     memset(&alloc->_reserve,0,sizeof(alloc->_reserve));
-    alloc->_custom_data_ptr = NULL;
+    void_ptr_set(&alloc->_custom_data_ptr, NULL, false, false);
     alloc->_head_size = aligne_space16(sizeof(shm_allocator_t) + SPACE_OFFSET) - SPACE_OFFSET;
 
     shm_alloc_chunk_t * last_empty_chunk = get_last_chunk(alloc);
@@ -363,7 +362,7 @@ dump_shm_allocator(shm_allocator_t * a)
                          _current_chunk_ptr: {%p,%u}, _custom_data_ptr: %p, now: %u}\r\n",
           (void*)a,a->_buffer_length,a->_version,s,a->_head_size,
           (void*)get_chunk(a,shm_chunk_ptr_offset(&a->_current_chunk_ptr)),
-           a->_current_chunk_ptr._ver_,a->_custom_data_ptr,now_unit());
+           a->_current_chunk_ptr._ver_,void_ptr_get(&a->_custom_data_ptr),now_unit());
 
    shm_alloc_chunk_t * c = get_first_chunk(a); 
    shm_alloc_chunk_t * last = get_last_chunk(a); 
@@ -556,7 +555,7 @@ check_shm_allocator(char * base, size_t length)
     (void)x;
     
     assert_large_chunk(&a->_shm_manager, base, length);
-    shm_small_alloc_impl_t * small = a->_small_alloc_impl;
+    shm_small_alloc_impl_t * small = shm_small_alloc_impl_get(a);
     assert_large_chunk(small, base, length);
 
     small_alloc_address_t * bins = NULL;

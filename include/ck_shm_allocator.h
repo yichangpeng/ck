@@ -311,9 +311,8 @@ struct shm_allocator
     shm_manager_t_ptr       _shm_manager;
     size_t                  _process_info;
     shm_chunk_ptr           _current_chunk_ptr;
-    sa_offset_ptr           _small_alloc_impl_offset_ptr;   //创建shm后设置或者已存在加载shm时使用获得_small_alloc_impl
-    shm_small_alloc_impl_t* _small_alloc_impl;
-    void*                   _custom_data_ptr;
+    sa_offset_ptr           _small_alloc_impl_offset_ptr; 
+    void_ptr                _custom_data_ptr;
     size_t                  _reserve_field[4];
 };
 
@@ -521,11 +520,6 @@ shm_small_alloc_impl_get(shm_allocator_t * allocator){
     return (shm_small_alloc_impl_t*)sa_offset_ptr_get(pptr);
 }
 
-CK_CC_INLINE static void
-shm_small_alloc_impl_init(shm_allocator_t ** allocator){
-    (*allocator)->_small_alloc_impl = shm_small_alloc_impl_get(*allocator);    
-}
-
 CK_CC_INLINE static void*
 alloc_small(shm_allocator_t *allocator, shm_small_alloc_impl_t * sa, size_t n)
 {
@@ -633,7 +627,7 @@ alloc_ex(shm_allocator_t * a, size_t n)
 {
     if (n > max_alloc_size)
         return alloc_large(a, n, 8, 0);
-    return alloc_small(a, a->_small_alloc_impl, n);
+    return alloc_small(a, shm_small_alloc_impl_get(a), n);
 }
 
 CK_CC_INLINE static void 
@@ -641,7 +635,7 @@ free_ex(shm_allocator_t * a, void * p, size_t n, bool delay)
 {
     if (p != NULL) {
         if (n <= max_alloc_size) {
-            free_small(a, a->_small_alloc_impl, p, n, delay);
+            free_small(a, shm_small_alloc_impl_get(a), p, n, delay);
         } else if (delay) {
             delay_free_large(get_chunk_by_ptr(p));
         } else {
@@ -655,7 +649,7 @@ alloc_static(shm_allocator_t * a, size_t n)
 {
     if (n > max_alloc_size)
         return alloc_large(a, n, 8, NEVER_FREE_BIT);
-    return alloc_small(a, a->_small_alloc_impl, n);
+    return alloc_small(a, shm_small_alloc_impl_get(a), n);
 }
 
 void
