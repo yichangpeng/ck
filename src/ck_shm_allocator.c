@@ -589,9 +589,10 @@ check_shm_allocator(char * base, size_t length)
 }
 
 void *
-get_container_parm1(struct shm_allocator * allocator, const char * name, bool create_if_not_exist, create_op_parm1 create_op)
+get_container_parm1(struct shm_manager * sm, const char * name, bool create_if_not_exist, create_op_parm1 create_op)
 {
-    shm_manager_t * slist = shm_manager_t_ptr_get(&allocator->_shm_manager);
+    struct shm_allocator * allocator = shm_allocator_t_ptr_get(&sm->_a);
+    struct ck_shm_slist * slist = &sm->_slist;
     struct shm_manager_info * n = NULL;
     const size_t name_len = strlen(name);
     const size_t len = sizeof(struct shm_manager_info) + name_len;
@@ -614,16 +615,17 @@ get_container_parm1(struct shm_allocator * allocator, const char * name, bool cr
 
         if (ck_shm_slist_insert_middle(pair.first, pair.second, &n->_list_entry))
         {
-            create_op(allocator, &n->_impl);
+            create_op(sm, &n->_impl);
             return void_ptr_get(&n->_impl);
         }
     }
 }
 
 void *
-get_container_parm2(struct shm_allocator * allocator, const char * name, bool create_if_not_exist, size_t initialize_size, create_op_parm2 create_op)
+get_container_parm2(struct shm_manager* sm, const char * name, bool create_if_not_exist, size_t initialize_size, create_op_parm2 create_op)
 {
-    shm_manager_t * slist = shm_manager_t_ptr_get(&allocator->_shm_manager);
+    struct shm_allocator * allocator = shm_allocator_t_ptr_get(&sm->_a);
+    struct ck_shm_slist * slist = &sm->_slist;
     struct shm_manager_info * n = NULL;
     const size_t name_len = strlen(name);
     const size_t len = sizeof(struct shm_manager_info) + name_len + 1;
@@ -652,36 +654,38 @@ get_container_parm2(struct shm_allocator * allocator, const char * name, bool cr
 
         if (ck_shm_slist_insert_middle(pair.first, pair.second, &n->_list_entry))
         {
-            create_op(allocator, &n->_impl, initialize_size);
+            create_op(sm, &n->_impl, initialize_size);
             return void_ptr_get(&n->_impl);
         }
     }
 }
 
 static void                                                                            
-create_stack_container(struct shm_allocator * allocator, void_ptr * container)                                               
+create_stack_container(struct shm_manager * sm, void_ptr * container)                                               
 {                                                                                      
+    struct shm_allocator * allocator = shm_allocator_t_ptr_get(&sm->_a);
     ck_shm_stack_t * stack = alloc_static(allocator, sizeof(ck_shm_stack_t));
     ck_shm_stack_init(stack);                                                          
     void_ptr_set(container, stack, false, false);
 }  
 
 ck_shm_stack_t *
-get_stack(struct shm_allocator * allocator, const char * name, bool create_if_not_exist)
+get_stack(struct shm_manager* sm, const char * name, bool create_if_not_exist)
 {
-   return get_container_parm1(allocator,name,create_if_not_exist,create_stack_container); 
+    return get_container_parm1(sm,name,create_if_not_exist,create_stack_container); 
 }
 
 static void                                                                            
-create_custom_object(struct shm_allocator * allocator, void_ptr * object, size_t initialize_size)                                               
+create_custom_object(struct shm_manager * sm, void_ptr * object, size_t initialize_size)                                               
 {                                                                                      
+    struct shm_allocator * allocator = shm_allocator_t_ptr_get(&sm->_a);
     void * pb = alloc_static(allocator, initialize_size); 
     void_ptr_set(object, pb, false, false);
 }  
 
 void *
-get_custom_object(struct shm_allocator * allocator, const char * name, size_t initialize_size, bool create_if_not_exist)
+get_custom_object(struct shm_manager * sm, const char * name, size_t initialize_size, bool create_if_not_exist)
 {
-   return get_container_parm2(allocator,name,create_if_not_exist,initialize_size,create_custom_object); 
+    return get_container_parm2(sm,name,create_if_not_exist,initialize_size,create_custom_object); 
 }
 

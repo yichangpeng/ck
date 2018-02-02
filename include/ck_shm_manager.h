@@ -12,8 +12,6 @@
 #include <ck_shm_stack.h>
 #include <ck_shm_allocator.h>
 
-struct shm_allocator;
-
 /*
 *
 * shm_manager:
@@ -22,16 +20,25 @@ struct shm_allocator;
 *
 */
 
+struct shm_allocator;
+typedef struct shm_allocator shm_allocator_t;
+CK_OFFSET_DEFINE(shm_allocator_t)
+
 struct shm_manager_info{
     struct ck_shm_slist_entry _list_entry;
     void_ptr                  _impl;
     char                      _name[1];
 };
 
-typedef struct ck_shm_slist shm_manager_t;
+struct shm_manager{
+    shm_allocator_t_ptr _a;
+    struct ck_shm_slist _slist;
+};
 
-typedef void (*create_op_parm1)(struct shm_allocator *, void_ptr *);
-typedef void (*create_op_parm2)(struct shm_allocator *, void_ptr *, size_t );
+typedef struct shm_manager shm_manager_t;
+
+typedef void (*create_op_parm1)(struct shm_manager *, void_ptr *);
+typedef void (*create_op_parm2)(struct shm_manager *, void_ptr *, size_t );
 
 CK_CC_INLINE static bool 
 shm_manager_op(ck_shm_slist_entry_t * n, const void * data)
@@ -41,16 +48,16 @@ shm_manager_op(ck_shm_slist_entry_t * n, const void * data)
 }
 
 CK_CC_INLINE void *
-get_container_parm1(struct shm_allocator * allocator, const char * name, bool create_if_not_exist, create_op_parm1 create_op);
+get_container_parm1(struct shm_manager * sm, const char * name, bool create_if_not_exist, create_op_parm1 create_op);
 
 CK_CC_INLINE void *
-get_container_parm2(struct shm_allocator * allocator, const char * name, bool create_if_not_exist, size_t initialize_size, create_op_parm2 create_op);
+get_container_parm2(struct shm_manager * sm, const char * name, bool create_if_not_exist, size_t initialize_size, create_op_parm2 create_op);
 
 CK_CC_INLINE ck_shm_stack_t *
-get_stack(struct shm_allocator * allocator, const char * name, bool create_if_not_exist);
+get_stack(struct shm_manager * sm, const char * name, bool create_if_not_exist);
 
 CK_CC_INLINE void *
-get_custom_object(struct shm_allocator * allocator, const char * name, size_t initialize_size, bool create_if_not_exist);
+get_custom_object(struct shm_manager * sm, const char * name, size_t initialize_size, bool create_if_not_exist);
 
 CK_OFFSET_DEFINE(shm_manager_t)
 

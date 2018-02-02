@@ -234,11 +234,11 @@ shm_chunk_is_finish(const shm_chunk_ptr* self, const shm_chunk_ptr* old)
 struct shm_small_alloc_impl;
 typedef struct shm_small_alloc_impl shm_small_alloc_impl_t;
 struct shm_allocator;
-typedef struct shm_allocator shm_allocator_t;
+//typedef struct shm_allocator shm_allocator_t;
 struct delay_queue_impl;
 typedef struct delay_queue_impl delay_queue_impl_t;
 
-CK_OFFSET_DEFINE(shm_allocator_t)
+//CK_OFFSET_DEFINE(shm_allocator_t)
 
 /*
 *
