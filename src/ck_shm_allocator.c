@@ -57,7 +57,7 @@ initialize_shm_small_alloc_impl(shm_allocator_t * allocator, size_t max_allocsiz
 
     memset(sa->_small_bin_total,0,sizeof(sa->_small_bin_total));
     sa_offset_ptr_set(&allocator->_small_alloc_impl_offset_ptr,sa,false,false);
-    shm_small_alloc_impl_init(allocator);
+    shm_small_alloc_impl_init(&allocator);
 
     for(size_t i = 0; i < sizeof(sa->_small_bin)/sizeof(sa->_small_bin[0]); ++i)
     {

@@ -522,8 +522,8 @@ shm_small_alloc_impl_get(shm_allocator_t * allocator){
 }
 
 CK_CC_INLINE static void
-shm_small_alloc_impl_init(shm_allocator_t * allocator){
-    allocator->_small_alloc_impl = shm_small_alloc_impl_get(allocator);    
+shm_small_alloc_impl_init(shm_allocator_t ** allocator){
+    (*allocator)->_small_alloc_impl = shm_small_alloc_impl_get(*allocator);    
 }
 
 CK_CC_INLINE static void*
