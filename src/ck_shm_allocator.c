@@ -626,7 +626,7 @@ get_container_parm2(struct shm_allocator * allocator, const char * name, bool cr
     shm_manager_t * slist = shm_manager_t_ptr_get(&allocator->_shm_manager);
     struct shm_manager_info * n = NULL;
     const size_t name_len = strlen(name);
-    const size_t len = sizeof(struct shm_manager_info) + name_len;
+    const size_t len = sizeof(struct shm_manager_info) + name_len + 1;
     n = alloc_ex(allocator, len);
     if (n == NULL){
         fprintf(stderr, "shm_manager alloc_ex failed, field: %s, len: %zu\r\n", name, len);
@@ -636,6 +636,12 @@ get_container_parm2(struct shm_allocator * allocator, const char * name, bool cr
 
     for (; ;) {
         struct shm_slist_pair pair = ck_shm_slist_search_if(&slist->slh_first, shm_manager_op, name, false);
+        struct shm_manager_info * info = (struct shm_manager_info*)pair.second;
+        if (info != NULL && strcmp(name, info->_name) >= 0)
+        {
+            free_ex(allocator, n, len, false);
+            return void_ptr_get(&info->_impl);
+        }
         if (!create_if_not_exist){
             fprintf(stderr, "shm_manager field %s not exists but create_if_not_exist is false\r\n", name);
             if (n){

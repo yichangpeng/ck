@@ -265,10 +265,9 @@ struct delay_queue_impl{
 */
 struct shm_small_alloc_impl
 {
-    delay_queue_impl_t  _delay_q;
     int                 _small_bin_total[small_bin_count];
-    char                _reserve[8];    //保留位,保证_small_bin数组起始地址是16的整数倍
     ck_shm_stack_t      _small_bin[small_bin_count];
+    delay_queue_impl_t  _delay_q;
 };
 
 /*
