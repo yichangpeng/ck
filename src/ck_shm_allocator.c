@@ -654,7 +654,7 @@ get_container_parm2(struct shm_allocator * allocator, const char * name, bool cr
     }
 }
 
-void                                                                            
+static void                                                                            
 create_stack_container(struct shm_allocator * allocator, void_ptr * container)                                               
 {                                                                                      
     ck_shm_stack_t * stack = alloc_static(allocator, sizeof(ck_shm_stack_t));
@@ -666,5 +666,18 @@ ck_shm_stack_t *
 get_stack(struct shm_allocator * allocator, const char * name, bool create_if_not_exist)
 {
    return get_container_parm1(allocator,name,create_if_not_exist,create_stack_container); 
+}
+
+static void                                                                            
+create_custom_object(struct shm_allocator * allocator, void_ptr * object, size_t initialize_size)                                               
+{                                                                                      
+    void * pb = alloc_static(allocator, initialize_size); 
+    void_ptr_set(object, pb, false, false);
+}  
+
+void *
+get_custom_object(struct shm_allocator * allocator, const char * name, size_t initialize_size, bool create_if_not_exist)
+{
+   return get_container_parm2(allocator,name,create_if_not_exist,initialize_size,create_custom_object); 
 }
 

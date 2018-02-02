@@ -40,9 +40,6 @@ shm_manager_op(ck_shm_slist_entry_t * n, const void * data)
     return (strcmp(ninfo->_name, (const char*)data));
 }
 
-CK_CC_INLINE void  
-create_stack_container(struct shm_allocator * allocator, void_ptr * container); 
-
 CK_CC_INLINE void *
 get_container_parm1(struct shm_allocator * allocator, const char * name, bool create_if_not_exist, create_op_parm1 create_op);
 
@@ -51,6 +48,9 @@ get_container_parm2(struct shm_allocator * allocator, const char * name, bool cr
 
 CK_CC_INLINE ck_shm_stack_t *
 get_stack(struct shm_allocator * allocator, const char * name, bool create_if_not_exist);
+
+CK_CC_INLINE void *
+get_custom_object(struct shm_allocator * allocator, const char * name, size_t initialize_size, bool create_if_not_exist);
 
 CK_OFFSET_DEFINE(shm_manager_t)
 
