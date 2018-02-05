@@ -375,11 +375,13 @@ CK_CC_INLINE static void
 ck_shm_fifo_mpmc_free_chain(struct ck_shm_fifo_mpmc *fifo, struct ck_shm_fifo_mpmc_entry *head_snapshot, 
             struct ck_shm_fifo_mpmc_entry *newhead_snapshot, free_node_fun free_fun, void* free_fun_data, size_t len)
 {
+    struct ck_shm_fifo_mpmc_entry * need_free = head_snapshot;
     if(cs_fifo_mpmc_offset_ptr_cas_ptr(&fifo->head, head_snapshot, newhead_snapshot)){
         while(head_snapshot != newhead_snapshot){
+            need_free = head_snapshot;
             head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head_snapshot->next);
             if(free_fun)
-                free_fun(head_snapshot, free_fun_data, len);
+                free_fun(need_free, free_fun_data, len);
         }
     }
 }
