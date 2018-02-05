@@ -81,7 +81,7 @@ test(void *c)
 			entry = malloc(sizeof(struct entry));
 			entry->tid = context->tid;
 			ck_shm_fifo_mpmc_enqueue(&fifo, &entry->fifo_entry);
-			if (ck_shm_fifo_mpmc_dequeue(&fifo,  &garbage, NULL, NULL) == false) {
+			if (ck_shm_fifo_mpmc_dequeue(&fifo,  &garbage, NULL, NULL, 0) == false) {
 				ck_error("ERROR [%u] Queue should never be empty.\n", context->tid);
 			}
 
@@ -99,7 +99,7 @@ test(void *c)
 			while (ck_shm_fifo_mpmc_tryenqueue(&fifo, &entry->fifo_entry) == false)
 				ck_pr_stall();
 
-			while (ck_shm_fifo_mpmc_trydequeue(&fifo, &garbage, NULL, NULL) == false)
+			while (ck_shm_fifo_mpmc_trydequeue(&fifo, &garbage, NULL, NULL, 0) == false)
 				ck_pr_stall();
 
             entry = (struct entry*)garbage;

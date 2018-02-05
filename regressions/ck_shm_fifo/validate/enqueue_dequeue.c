@@ -122,7 +122,7 @@ fifo_pop_thread(void* unused CK_CC_UNUSED)
 
 #ifdef CK_F_SHM_FIFO_MPMC
 #if defined(MPMC)
-		ck_shm_fifo_mpmc_dequeue(&fifo, &ref, NULL, NULL);
+		ck_shm_fifo_mpmc_dequeue(&fifo, &ref, NULL, NULL, false);
         if(ref == NULL)
         {
             if(ck_pr_load_uint(&push_threads_count) == 0)
@@ -134,7 +134,7 @@ fifo_pop_thread(void* unused CK_CC_UNUSED)
         }
 		entry = getvalue(ref);
 #elif defined(TRYMPMC)
-		if (ck_shm_fifo_mpmc_trydequeue(&fifo, &ref, NULL, NULL) == false)
+		if (ck_shm_fifo_mpmc_trydequeue(&fifo, &ref, NULL, NULL, false), 0 == false)
         {
             if(ck_pr_load_uint(&push_threads_count) == 0)
                 break;

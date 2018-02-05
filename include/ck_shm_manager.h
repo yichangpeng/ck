@@ -27,7 +27,7 @@ CK_OFFSET_DEFINE(shm_allocator_t)
 struct shm_manager_info{
     struct ck_shm_slist_entry _list_entry;
     void_ptr                  _impl;
-    char                      _name[1];
+    char                      _name[0];
 };
 
 struct shm_manager{
@@ -44,7 +44,7 @@ CK_CC_INLINE static bool
 shm_manager_op(ck_shm_slist_entry_t * n, const void * data)
 {
     struct shm_manager_info * ninfo = (struct shm_manager_info *)n;
-    return (strcmp(ninfo->_name, (const char*)data));
+    return (strcmp(ninfo->_name, (const char*)data)>=0);
 }
 
 CK_CC_INLINE void *

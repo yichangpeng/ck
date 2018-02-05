@@ -253,7 +253,7 @@ struct delay_queue_impl{
     uint32_t  _push_tail;
     uint32_t  _push_count;
     size_t    _max_size;
-    qnode_ptr _v[1];
+    qnode_ptr _v[0];
 };
 
 /*
@@ -314,6 +314,13 @@ struct shm_allocator
     void_ptr                _custom_data_ptr;
     size_t                  _reserve_field[4];
 };
+
+CK_CC_INLINE static struct shm_manager *
+get_shm_manager(shm_allocator_t *a)
+{
+    return shm_manager_t_ptr_get(&a->_shm_manager);
+}
+
 
 void *
 alloc_large(shm_allocator_t * la, size_t n, size_t aligned_size, uint8_t add_chunk_flags);

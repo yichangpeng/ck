@@ -133,7 +133,6 @@ table_insert(const char *value)
 	size_t l = strlen(value);
 
 	ck_ht_hash(&h, &ht, value, l);
-    int 
 	ck_ht_entry_set(&entry, h, value, l, "VALUE");
 	return ck_ht_put_spmc(&ht, h, &entry);
 }

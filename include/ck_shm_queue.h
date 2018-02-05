@@ -141,6 +141,7 @@ ck_shm_slist_search_if(ck_shm_slist_entry_t * first, IfOp op, const void * data,
             struct shm_slist_pair pair = {left_node, t};
             return pair;
         }
+        t = ck_shm_slist_entry_t_ptr_get(&t_next);
         ck_shm_slist_entry_t_ptr_clone(&t->sle_next, &t_next);
 
         if (is_offset_ptr_marked(ck_shm_slist_entry_t_config,&t_next)
@@ -166,7 +167,7 @@ ck_shm_slist_search_if(ck_shm_slist_entry_t * first, IfOp op, const void * data,
                 return pair;
             }
             left_node = t;
-            left_node_next = t_next;
+            ck_shm_slist_entry_t_ptr_clone(&t_next, &left_node_next);
         }
     }
 }

@@ -51,7 +51,7 @@ int
 main(void)
 {
 	ck_spinlock_fas_t mutex = CK_SPINLOCK_FAS_INITIALIZER;
-	void *r;
+	ck_shm_fifo_spsc_entry_t *rs;
 	uint64_t s, e, a;
 	unsigned int i;
 	unsigned int j;
@@ -78,7 +78,7 @@ main(void)
 		s = rdtsc();
 		for (j = 0; j < ENTRIES; j++) {
 			ck_spinlock_fas_lock(&mutex);
-			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry + j, NULL);
+			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry);
 			ck_spinlock_fas_unlock(&mutex);
 		}
 		e = rdtsc();
@@ -91,12 +91,12 @@ main(void)
 	for (i = 0; i < STEPS; i++) {
 		ck_shm_fifo_spsc_init(&spsc_fifo, &spsc_stub);
 		for (j = 0; j < ENTRIES; j++)
-			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry + j, NULL);
+			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry + j);
 
 		s = rdtsc();
 		for (j = 0; j < ENTRIES; j++) {
 			ck_spinlock_fas_lock(&mutex);
-			ck_shm_fifo_spsc_dequeue(&spsc_fifo, &r);
+			ck_shm_fifo_spsc_dequeue(&spsc_fifo, &rs);
 			ck_spinlock_fas_unlock(&mutex);
 		}
 		e = rdtsc();
@@ -110,7 +110,7 @@ main(void)
 
 		s = rdtsc();
 		for (j = 0; j < ENTRIES; j++)
-			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry + j, NULL);
+			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry + j);
 		e = rdtsc();
 
 		a += e - s;
@@ -121,11 +121,11 @@ main(void)
 	for (i = 0; i < STEPS; i++) {
 		ck_shm_fifo_spsc_init(&spsc_fifo, &spsc_stub);
 		for (j = 0; j < ENTRIES; j++)
-			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry + j, NULL);
+			ck_shm_fifo_spsc_enqueue(&spsc_fifo, spsc_entry + j);
 
 		s = rdtsc();
 		for (j = 0; j < ENTRIES; j++)
-			ck_shm_fifo_spsc_dequeue(&spsc_fifo, &r);
+			ck_shm_fifo_spsc_dequeue(&spsc_fifo, &rs);
 		e = rdtsc();
 		a += e - s;
 	}
@@ -164,7 +164,7 @@ main(void)
 		s = rdtsc();
 		for (j = 0; j < ENTRIES; j++)
         {
-			ck_shm_fifo_mpmc_dequeue(&mpmc_fifo, &garbage,NULL,NULL);
+			ck_shm_fifo_mpmc_dequeue(&mpmc_fifo, &garbage,NULL,NULL,0);
 
             assert(((struct entry*)garbage)->value == (int)j);
         }

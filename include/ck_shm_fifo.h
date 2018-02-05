@@ -369,24 +369,24 @@ ck_shm_fifo_mpmc_tryenqueue(struct ck_shm_fifo_mpmc *fifo,
     return false;
 }
 
-typedef void (*free_node_fun)(struct ck_shm_fifo_mpmc_entry* n, const void * data);
+typedef void (*free_node_fun)(struct ck_shm_fifo_mpmc_entry* n, void * data, size_t len);
 
 CK_CC_INLINE static void
 ck_shm_fifo_mpmc_free_chain(struct ck_shm_fifo_mpmc *fifo, struct ck_shm_fifo_mpmc_entry *head_snapshot, 
-            struct ck_shm_fifo_mpmc_entry *newhead_snapshot, free_node_fun free_fun, const void* free_fun_data)
+            struct ck_shm_fifo_mpmc_entry *newhead_snapshot, free_node_fun free_fun, void* free_fun_data, size_t len)
 {
     if(cs_fifo_mpmc_offset_ptr_cas_ptr(&fifo->head, head_snapshot, newhead_snapshot)){
         while(head_snapshot != newhead_snapshot){
             head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head_snapshot->next);
             if(free_fun)
-                free_fun(head_snapshot, free_fun_data);
+                free_fun(head_snapshot, free_fun_data, len);
         }
     }
 }
 
 CK_CC_INLINE static bool
 ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
-		     struct ck_shm_fifo_mpmc_entry **value, free_node_fun free_fun, const void * free_fun_data)
+		     struct ck_shm_fifo_mpmc_entry **value, free_node_fun free_fun, void * free_fun_data, size_t len)
 {
     const int MAX_HOPS = 3;
     cs_fifo_mpmc_offset_ptr head = CK_OFFSET_PTR_ENTRY_NULL, tail = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL, 
@@ -399,12 +399,9 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
         cs_fifo_mpmc_offset_ptr_clone(&fifo->tail,&tail);
         ck_pr_fence_load();
         head_snapshot = cs_fifo_mpmc_offset_ptr_get(&head);
-        cs_fifo_mpmc_offset_ptr_clone(&head_snapshot->next,&next);
-
         tail_snapshot = cs_fifo_mpmc_offset_ptr_get(&tail);
 
         if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) == head_snapshot){
-
             cs_fifo_mpmc_offset_ptr_clone(&head_snapshot->next,&next);
             ck_pr_fence_load();
             next_snapshot = cs_fifo_mpmc_offset_ptr_get(&next);
@@ -432,7 +429,7 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
                 if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) != head_snapshot)
                     continue;
                 else if(iterator_snapshot == tail_snapshot){
-                    ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, iterator_snapshot, free_fun, free_fun_data); 
+                    ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, iterator_snapshot, free_fun, free_fun_data, len); 
                 }
                 else{
                     nn = cs_fifo_mpmc_offset_ptr_get(&next);
@@ -442,7 +439,7 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
                     set_offset_ptr_marked(cs_fifo_mpmc_config,&new_next,true);
                     if(cs_fifo_mpmc_offset_ptr_cas(&in->next,&next,&new_next)){
                         if(hops >= MAX_HOPS)
-                            ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, next_snapshot, free_fun, free_fun_data); 
+                            ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, next_snapshot, free_fun, free_fun_data, len); 
 
                         return true;
                     }
@@ -455,7 +452,7 @@ ck_shm_fifo_mpmc_dequeue(struct ck_shm_fifo_mpmc *fifo,
 
 CK_CC_INLINE static bool
 ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
-		    struct ck_shm_fifo_mpmc_entry **value, free_node_fun free_fun, const void * free_fun_data)
+		    struct ck_shm_fifo_mpmc_entry **value, free_node_fun free_fun, void * free_fun_data, size_t len)
 {
     cs_fifo_mpmc_offset_ptr head = CK_OFFSET_PTR_ENTRY_NULL, tail = CK_OFFSET_PTR_ENTRY_NULL, next = CK_OFFSET_PTR_ENTRY_NULL, 
     iterator = CK_OFFSET_PTR_ENTRY_NULL, new_next = CK_OFFSET_PTR_ENTRY_NULL;
@@ -498,7 +495,7 @@ ck_shm_fifo_mpmc_trydequeue(struct ck_shm_fifo_mpmc *fifo,
             if(cs_fifo_mpmc_offset_ptr_get(&fifo->head) != head_snapshot)
                 return false;
             else if(iterator_snapshot == tail_snapshot){
-                ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, iterator_snapshot, free_fun, free_fun_data); 
+                ck_shm_fifo_mpmc_free_chain(fifo, head_snapshot, iterator_snapshot, free_fun, free_fun_data, len); 
             }
             else{
                 nn = cs_fifo_mpmc_offset_ptr_get(&next);
