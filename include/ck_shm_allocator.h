@@ -54,8 +54,8 @@ static const uint8_t    SHM_TYPE_MMAP= 3;
 
 /*
 *qnode_helper:
-*      将32位数值指针转化为联合体,低位n1表示其值，高位n2表示指针的低32位
-*       在for循环成功n1+1,下次循环时n2位n1+1的值,n1为n1+1,说明操作成功
+*      将32位数值指针转化为联合体,低位n1表示其值，高位n2表示下一个位置的值
+*       在for循环cas操作成功n1加1操作,n2为n1+1的值,说明操作成功
 */
 typedef union qnode_helper_union
 {
@@ -248,7 +248,7 @@ typedef struct delay_queue_impl delay_queue_impl_t;
 *
 */
 struct delay_queue_impl{
-    uint32_t  _head;
+    uint32_t  _head;                //_head,_tail,_push_tail位置不能更改,qnode_helper表示(_head,_tail)或(_tail,_push_tail)
     uint32_t  _tail;
     uint32_t  _push_tail;
     uint32_t  _push_count;
